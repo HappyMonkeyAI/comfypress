@@ -118,7 +118,32 @@ function comfy_image_settings_page() {
     <?php
 }
 
-// Placeholder for future includes (endpoints, REST routes, blocks)
+// Include endpoints and block registration
 require_once __DIR__ . '/includes/endpoints.php';
+
+// Enqueue block editor assets
+add_action('enqueue_block_editor_assets', 'comfy_image_enqueue_editor_assets');
+function comfy_image_enqueue_editor_assets() {
+    $script_url = plugins_url('assets/block.js', __FILE__);
+
+    // Register a script that relies on WordPress' editor globals
+    wp_register_script(
+        'comfy-image-block',
+        $script_url,
+        array('wp-blocks','wp-element','wp-components','wp-i18n','wp-editor','wp-data'),
+        COMFY_IMAGE_VERSION
+    );
+
+    // Localize settings for the script
+    $settings = array(
+        'rest_base' => esc_url_raw(rest_url('comfy-image/v1')),
+        'default_workflow_template' => get_option('comfy_image_default_workflow_template',''),
+        'auto_save_to_media' => boolval(get_option('comfy_image_auto_save_to_media', 1)),
+        'max_image_size_mb' => intval(get_option('comfy_image_max_image_size_mb', 10)),
+    );
+    wp_localize_script('comfy-image-block', 'ComfyImageSettings', $settings);
+
+    wp_enqueue_script('comfy-image-block');
+}
 
 ?>

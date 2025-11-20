@@ -161,6 +161,90 @@ function comfy_image_fetch_image( WP_REST_Request $request ) {
 
     $view_url = untrailingslashit($base) . '/view?filename=' . rawurlencode($filename);
 
+    // If import=1 is present, download the image and insert into WP Media
+    $import = $request->get_param('import');
+    if ($import && ($import === '1' || $import === 1 || $import === true || $import === 'true')) {
+        // Fetch the image binary from ComfyUI
+        $resp = wp_remote_get($view_url, array('timeout' => 40));
+        if (is_wp_error($resp)) {
+            return new WP_REST_Response(array('error' => $resp->get_error_message()), 502);
+        }
+
+        $code = wp_remote_retrieve_response_code($resp);
+        if ($code !== 200) {
+            return new WP_REST_Response(array('error' => 'Failed to fetch image from ComfyUI', 'status' => $code), $code);
+        }
+
+        $body = wp_remote_retrieve_body($resp);
+        if (empty($body)) {
+            return new WP_REST_Response(array('error' => 'Empty image body received'), 502);
+        }
+
+        // Size check
+        $size_bytes = strlen($body);
+        $max_mb = intval(get_option('comfy_image_max_image_size_mb', 10));
+        $max_bytes = $max_mb * 1024 * 1024;
+        if ($max_bytes > 0 && $size_bytes > $max_bytes) {
+            return new WP_REST_Response(array('error' => 'Image exceeds maximum allowed size', 'size_bytes' => $size_bytes, 'max_bytes' => $max_bytes), 413);
+        }
+
+        // Content type check
+        $content_type = wp_remote_retrieve_header($resp, 'content-type');
+        if ($content_type) {
+            $content_type = strtolower(trim(explode(';', $content_type)[0]));
+        }
+        $allowed = array('image/png' => 'png', 'image/jpeg' => 'jpg', 'image/jpg' => 'jpg', 'image/webp' => 'webp', 'image/gif' => 'gif');
+        if (empty($content_type) || ! array_key_exists($content_type, $allowed)) {
+            return new WP_REST_Response(array('error' => 'Unsupported or missing image MIME type', 'mime' => $content_type), 415);
+        }
+
+        // Prepare filename and save via wp_upload_bits
+        $base_name = basename($filename);
+        $base_name = preg_replace('/[^A-Za-z0-9._-]/', '_', $base_name);
+        $ext = $allowed[$content_type];
+        // Ensure extension
+        if (! preg_match('/\.' . preg_quote($ext, '/') . '$/i', $base_name)) {
+            $base_name .= '.' . $ext;
+        }
+
+        // Include required files for media handling
+        if (! function_exists('wp_handle_sideload')) {
+            require_once ABSPATH . 'wp-admin/includes/file.php';
+            require_once ABSPATH . 'wp-admin/includes/image.php';
+            require_once ABSPATH . 'wp-admin/includes/media.php';
+        }
+
+        // Use wp_upload_bits to write the file
+        $upload = wp_upload_bits( $base_name, null, $body );
+        if ( isset($upload['error']) && $upload['error'] ) {
+            return new WP_REST_Response(array('error' => 'Failed to write uploaded file', 'details' => $upload['error']), 500);
+        }
+
+        $file_path = $upload['file'];
+        $file_url = $upload['url'];
+
+        // Prepare attachment
+        $wp_filetype = wp_check_filetype( $file_path );
+        $attachment = array(
+            'post_mime_type' => $wp_filetype['type'] ?: $content_type,
+            'post_title' => sanitize_text_field( pathinfo( $base_name, PATHINFO_FILENAME ) ),
+            'post_content' => '',
+            'post_status' => 'inherit'
+        );
+
+        $attach_id = wp_insert_attachment( $attachment, $file_path );
+        if ( is_wp_error($attach_id) ) {
+            return new WP_REST_Response(array('error' => 'Failed to insert attachment', 'details' => $attach_id->get_error_message()), 500);
+        }
+
+        $attach_data = wp_generate_attachment_metadata( $attach_id, $file_path );
+        wp_update_attachment_metadata( $attach_id, $attach_data );
+
+        // Return attachment info
+        return new WP_REST_Response(array('attachment_id' => $attach_id, 'url' => $file_url, 'mime' => $content_type), 200);
+    }
+
+    // Default: return view URL
     return new WP_REST_Response(array('view_url' => $view_url), 200);
 }
 

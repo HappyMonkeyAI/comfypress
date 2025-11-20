@@ -54,3 +54,4 @@ build/
 # Local development files
 local-config.php
 wp-config-local.php
+image-image-gen
