@@ -1,0 +1,107 @@
+{
+  "name": "Comfy Image - WordPress ComfyUI Integration",
+  "slug": "comfy-image",
+  "summary": "A WordPress plugin that enables Gutenberg users to generate and insert images using a remote ComfyUI instance via slash commands or a block widget.",
+  "version": "0.1.0",
+  "license": "GPL-2.0+",
+  "goals": [
+    "Let editors generate images on-the-fly inside Gutenberg using ComfyUI",
+    "Expose a slash command `/comfy` and a Gutenberg block to create images from text prompts",
+    "Provide an admin UI to configure ComfyUI endpoint, workflow templates and media options",
+    "Optionally save generated images to the WP Media Library and insert them into posts/pages"
+  ],
+  "primary_features": [
+    "Slash-command prompt: `/comfy <description>` inside Gutenberg to call ComfyUI",
+    "Gutenberg block: dedicated UI for prompt + advanced settings (seed, steps, model)",
+    "Admin settings page to set ComfyUI URL, default workflow, and save-to-media behavior",
+    "Server-side proxy endpoints that upload images to ComfyUI, submit workflows, poll for completion, and import results",
+    "Client-side UX: upload preview, progress updates, and image insertion into post content"
+  ],
+  "secondary_features": [
+    "Rate limiting and abuse protection",
+    "Multiple workflow templates (shop, hero images, avatars, etc.)",
+    "Optional model/workflow selection per-block",
+    "CORS and host allowlist for ComfyUI integration",
+    "Admin usage logs and generated-image audit"
+  ],
+  "tech_stack": {
+    "wordpress": ">=5.9",
+    "php": ">=8.0",
+    "javascript": "ESNext (Gutenberg/React via @wordpress/scripts)",
+    "comfyui": "ComfyUI HTTP API (upload, prompt, history, view)",
+    "build_tools": "wp-scripts (recommended), npm/yarn",
+    "optional": "Node.js for building editor assets"
+  },
+  "comfyui_integration": {
+    "endpoints": {
+      "upload_image": "POST /upload/image",
+      "submit_workflow": "POST /prompt",
+      "history": "GET /history/{prompt_id}",
+      "view": "GET /view?filename={filename}"
+    },
+    "notes": "Workflows are JSON objects; the plugin will ship example templates under templates/ (from image-image-gen)."
+  },
+  "admin_settings": {
+    "comfy_base_url": "http://192.168.1.2:8188 (example)",
+    "default_workflow_template": "path or JSON",
+    "auto_save_to_media": true,
+    "max_image_size_mb": 10,
+    "allowed_roles": ["editor", "author"]
+  },
+  "security_considerations": [
+    "Use `check_ajax_referer` for all AJAX endpoints",
+    "Capability checks: `current_user_can('edit_posts')` or `manage_options` where appropriate",
+    "Sanitize all inputs (sanitize_text_field, esc_url_raw) and validate remote responses",
+    "Restrict ComfyUI host via admin settings and optionally an allowlist",
+    "Add rate-limiting (transient-based) to avoid abuse",
+    "When saving images to media, verify MIME and use WordPress upload APIs"
+  ],
+  "development_state": {
+    "scaffold": "not created yet (PLAN.md created)",
+    "reviewed_examples": [
+      "image-image-gen/js/main.js",
+      "image-image-gen/README.md",
+      "LLM_Auto_Redirect_v1.2.0/LLM_Auto_Redirect.php",
+      "LLM_Auto_Redirect_v1.2.0/LLM_Auto_Redirect_multi.php"
+    ],
+    "notes": "We have example frontend ComfyUI integration (image-image-gen) and example WP admin patterns (LLM_Auto_Redirect) which will be adapted."
+  },
+  "todo": [
+    { "id": "1", "title": "Create plugin scaffold and repo", "status": "pending" },
+    { "id": "2", "title": "Add plugin metadata and hooks", "status": "pending" },
+    { "id": "3", "title": "Implement backend ComfyUI proxy endpoints", "status": "pending" },
+    { "id": "4", "title": "Build Gutenberg block and slash command", "status": "pending" },
+    { "id": "5", "title": "Add admin settings (Comfy URL, options)", "status": "pending" },
+    { "id": "6", "title": "Implement image UI and media handling", "status": "pending" },
+    { "id": "7", "title": "Add security, sanitization and rate-limit", "status": "pending" },
+    { "id": "8", "title": "Write tests, docs and package plugin", "status": "pending" }
+  ],
+  "how_to_run_locally": {
+    "requirements": ["WordPress development environment (LocalWP, Docker, or WP-CLI)", "ComfyUI instance accessible from the host running WordPress"],
+    "steps": [
+      "Copy the plugin folder into wp-content/plugins/comfy-image",
+      "Activate the plugin in WP Admin > Plugins",
+      "Open Settings > Comfy Image and configure ComfyUI URL",
+      "Open Gutenberg editor and add the Comfy block or type /comfy <prompt>"
+    ]
+  },
+  "files_of_interest": [
+    "image-image-gen/js/main.js",
+    "image-image-gen/README.md",
+    "image-image-gen/image_qwen_image_edit_2509.json",
+    "LLM_Auto_Redirect_v1.2.0/LLM_Auto_Redirect.php",
+    "LLM_Auto_Redirect_v1.2.0/LLM_Auto_Redirect_multi.php",
+    "PLAN.md"
+  ],
+  "open_questions": [
+    "Should generated images be saved to WP Media by default?",
+    "Which WordPress roles are allowed to generate images (editors/authors/contributors)?",
+    "Do we need authentication between WP and ComfyUI (API key or reverse proxy)?",
+    "Do we want server-side download into media or remote embedding by URL?"
+  ],
+  "contact": {
+    "owner": "stephen",
+    "project_root": "/home/stephen/Documents/www/comfypress"
+  },
+  "notes": "This file is intentionally prescriptive to let an LLM pick up development. Follow PLAN.md for the implementation milestones."
+}

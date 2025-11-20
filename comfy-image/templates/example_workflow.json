@@ -1,0 +1,14 @@
+{
+  "title": "Example image workflow",
+  "nodes": [
+    {
+      "id": "txt2img",
+      "type": "txt2img",
+      "params": {
+        "prompt": "A cozy cabin in a snowy forest, warm lighting, 4k",
+        "steps": 20,
+        "seed": 42
+      }
+    }
+  ]
+}
