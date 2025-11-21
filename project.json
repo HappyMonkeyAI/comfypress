@@ -15,7 +15,7 @@
     "Gutenberg block: dedicated UI for prompt + basic settings (seed, steps) — implemented (minimal)",
     "Admin settings page to set ComfyUI URL, default workflow, and save-to-media behavior — implemented",
     "Server-side REST endpoints that submit workflows, poll for completion, fetch results, and import into WP Media — implemented",
-    "Client-side UX: progress updates and image insertion into post content — implemented (basic)">
+    "Client-side UX: progress updates and image insertion into post content — implemented (basic)"
   ],
   "secondary_features": [
     "Rate limiting and abuse protection (pending)",
@@ -34,7 +34,7 @@
   },
   "comfyui_integration": {
     "endpoints": {
-      "upload_image": "POST /upload/image (endpoint stub — pending full implementation)",
+      "upload_image": "multipart upload proxy: stub (not yet implemented)",
       "submit_workflow": "POST /prompt",
       "history": "GET /history/{prompt_id}",
       "view": "GET /view?filename={filename}"
@@ -42,9 +42,10 @@
     "notes": "Workflows are JSON objects; the plugin ships an example template under templates/. The plugin proxies submit/history/view calls and supports server-side import of resulting images into WP Media."
   },
   "admin_settings": {
-    "comfy_base_url": "https://owned-schedules-practitioner-reflection.trycloudflare.com/",
+    "comfy_base_url": "http://localhost:8188/",
     "default_workflow_template": "path or JSON",
     "auto_save_to_media": true,
+    "allow_anonymous_generation": false,
     "max_image_size_mb": 10,
     "allowed_roles": ["editor", "author"]
   },

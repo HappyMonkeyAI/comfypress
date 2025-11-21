@@ -3,6 +3,8 @@ Project: ComfyUI WordPress Plugin — PLAN
 Goal
 - Build a WordPress plugin that lets Gutenberg users generate images from ComfyUI on the fly via a slash command (`/comfy`) or a Page Block widget. Include a plugin admin settings page to configure ComfyUI URL and related options.
 
+Current status: scaffold, admin settings, endpoints (except multipart upload proxy), and a minimal Gutenberg block are implemented. Next steps: implement multipart upload proxy, security/rate-limiting, slash-command, and tests.
+
 Files I reviewed
 - `image-image-gen/js/main.js:1` — frontend ComfyUI integration (upload, submit workflow, poll, display).
 - `image-image-gen/README.md:1` — usage notes and API endpoints for the image frontend.

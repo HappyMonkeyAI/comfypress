@@ -15,7 +15,7 @@ Files created in this workspace
 How to test locally
 1. Copy `comfy-image/` into your WordPress `wp-content/plugins/` directory.
 2. Activate the plugin in WP Admin > Plugins.
-3. Visit Settings > Comfy Image and ensure the `ComfyUI Base URL` points to a reachable ComfyUI instance (e.g. the configured URL in this workspace: `https://owned-schedules-practitioner-reflection.trycloudflare.com/`).
+3. Visit Settings > Comfy Image and ensure the `ComfyUI Base URL` points to a reachable ComfyUI instance (e.g. `http://localhost:8188/`) — replace with your ComfyUI instance URL.
 4. Open the Gutenberg editor for a post, add the `Comfy Image` block, type a prompt and click `Generate`.
 5. The block will submit a workflow to ComfyUI, poll for results, import the resulting image into WP Media, and insert it into the post.
 
