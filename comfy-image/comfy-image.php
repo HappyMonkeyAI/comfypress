@@ -1,11 +1,12 @@
 <?php
 /**
- * Plugin Name: Comfy Image — ComfyUI Integration
- * Description: Generate images inside Gutenberg using a remote ComfyUI instance.
+ * Plugin Name: ComfyPress
+ * Description: Generate images inside Gutenberg using a configured ComfyUI server.
  * Version:     0.1.3
  * Author:      HappyMonkey AI
  * Author URI:  https://happymonkey.ai/
- * License:     GPL-2.0+
+ * License:     MIT
+ * License URI: https://opensource.org/license/mit/
  * Text Domain: comfy-image
  */
 

@@ -1,9 +1,9 @@
 {
-  "name": "Comfy Image - WordPress ComfyUI Integration",
+  "name": "ComfyPress",
   "slug": "comfy-image",
   "summary": "A WordPress plugin that enables authenticated Gutenberg users to generate and insert images using a configured ComfyUI instance through a dedicated block discoverable from the native slash inserter.",
   "version": "0.1.3",
-  "license": "GPL-2.0+",
+  "license": "MIT",
   "goals": [
     "Let editors generate images on-the-fly inside Gutenberg using ComfyUI",
     "Expose a Gutenberg image-generation block discoverable by typing `/comfy` in the native block inserter",
