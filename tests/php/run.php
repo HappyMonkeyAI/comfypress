@@ -150,12 +150,12 @@ function check($condition, $message) {
     }
 }
 
-$workflow_fixture_path = __DIR__ . '/../../comfy-image/examples/flux1-krea-dev.api.json';
+$workflow_fixture_path = __DIR__ . '/../../comfy-image/examples/flux2-klein-4b.api.json';
 $workflow_fixture_raw = file_exists($workflow_fixture_path) ? file_get_contents($workflow_fixture_path) : false;
 $workflow_fixture = is_string($workflow_fixture_raw) ? json_decode($workflow_fixture_raw, true) : null;
 check(is_array($workflow_fixture) && ! empty($workflow_fixture), 'example workflow fixture is a non-empty JSON object');
 check(
-    is_array($workflow_fixture) && isset($workflow_fixture['45']['inputs']['text']) && strpos($workflow_fixture['45']['inputs']['text'], '{{prompt}}') !== false,
+    is_array($workflow_fixture) && isset($workflow_fixture['76']['inputs']['value']) && strpos($workflow_fixture['76']['inputs']['value'], '{{prompt}}') !== false && isset($workflow_fixture['75:74']['inputs']['text'][0]) && $workflow_fixture['75:74']['inputs']['text'][0] === '76',
     'example workflow fixture uses the ComfyUI API prompt template contract'
 );
 
@@ -187,7 +187,7 @@ $GLOBALS['comfy_test_remote_response'] = array(
     'headers' => array('x-upstream-secret' => 'do-not-forward'),
 );
 $request = new WP_REST_Request(array(
-    'workflow' => array('4' => array('inputs' => array('text' => '{{prompt}}', 'negative' => 'keep this text'))),
+    'workflow' => array('4' => array('inputs' => array('text' => '{{prompt}}', 'negative' => 'keep this text', 'seed' => 123, 'steps' => 12, 'cfg' => 5.5))),
     'prompt' => 'blue cabin',
     'comfy_base_url' => 'http://untrusted.example',
 ));
@@ -200,8 +200,73 @@ check(! array_key_exists('comfy_raw_body', $data), 'submit response does not exp
 check(! array_key_exists('comfy_headers', $data), 'submit response does not expose upstream headers');
 check(($sent['prompt']['4']['inputs']['text'] ?? null) === 'blue cabin', 'submit substitutes the prompt placeholder in the workflow');
 check(($sent['prompt']['4']['inputs']['negative'] ?? null) === 'keep this text', 'submit preserves unrelated workflow text');
+check(($sent['prompt']['4']['inputs']['seed'] ?? null) === 123 && ($sent['prompt']['4']['inputs']['steps'] ?? null) === 12 && ($sent['prompt']['4']['inputs']['cfg'] ?? null) === 5.5, 'unset overrides preserve administrator workflow numeric defaults');
 check(($GLOBALS['comfy_test_remote_args']['args']['redirection'] ?? null) === 0, 'submit does not follow upstream redirects');
 check(isset($GLOBALS['comfy_test_remote_args']['url']) && $GLOBALS['comfy_test_remote_args']['url'] === 'http://127.0.0.1:8188/prompt', 'workflow requests use the configured administrator endpoint, not a request-supplied URL');
+
+$override_workflow = array(
+    'noise' => array('inputs' => array('noise_seed' => '{{seed}}')),
+    'sampler' => array('inputs' => array('steps' => '{{steps}}')),
+    'guider' => array('inputs' => array('cfg' => '{{cfg}}')),
+    'text' => array('inputs' => array('value' => '{{prompt}}')),
+);
+$response = comfy_image_submit_workflow(new WP_REST_Request(array(
+    'workflow' => $override_workflow,
+    'prompt' => 'blue cabin',
+    'seed' => '18446744073709551615',
+    'steps' => '4096',
+    'cfg' => '0.01',
+)));
+$override_body = $GLOBALS['comfy_test_remote_args']['args']['body'];
+$decoded_overrides = json_decode($override_body, true);
+check($response->get_status() === 200, 'submit accepts supported seed, steps, and CFG override boundaries');
+check(strpos($override_body, '"noise_seed":18446744073709551615') !== false, 'submit preserves the complete unsigned 64-bit seed as a JSON number');
+check(($decoded_overrides['prompt']['sampler']['inputs']['steps'] ?? null) === 4096, 'submit substitutes steps as a JSON integer');
+check(isset($decoded_overrides['prompt']['guider']['inputs']['cfg']) && is_numeric($decoded_overrides['prompt']['guider']['inputs']['cfg']) && abs((float) $decoded_overrides['prompt']['guider']['inputs']['cfg'] - 0.01) < 0.000001, 'submit substitutes CFG as a JSON number');
+
+$calls_before_invalid_override = $GLOBALS['comfy_test_remote_calls'];
+foreach (array(
+    array('seed', '18446744073709551616'),
+    array('steps', '0'),
+    array('steps', '4097'),
+    array('cfg', '-0.01'),
+    array('cfg', '100.01'),
+    array('cfg', '1.001'),
+    array('cfg', 'NaN'),
+) as $invalid_override) {
+    $invalid_workflow = array(
+        'value' => array('inputs' => array($invalid_override[0] => '{{' . $invalid_override[0] . '}}', 'text' => '{{prompt}}')),
+    );
+    $invalid_request = array('workflow' => $invalid_workflow, 'prompt' => 'blue cabin');
+    $invalid_request[$invalid_override[0]] = $invalid_override[1];
+    $invalid_response = comfy_image_submit_workflow(new WP_REST_Request($invalid_request));
+    check($invalid_response->get_status() === 400, 'submit rejects out-of-range or malformed ' . $invalid_override[0] . ' overrides');
+}
+check($GLOBALS['comfy_test_remote_calls'] === $calls_before_invalid_override, 'invalid numeric overrides are rejected before upstream submission');
+
+$response = comfy_image_submit_workflow(new WP_REST_Request(array(
+    'workflow' => array('text' => array('inputs' => array('text' => '{{prompt}}'))),
+    'prompt' => 'blue cabin',
+    'steps' => '20',
+)));
+check($response->get_status() === 400, 'submit rejects a provided override when its explicit workflow marker is absent');
+$response = comfy_image_submit_workflow(new WP_REST_Request(array(
+    'workflow' => array('sampler' => array('inputs' => array('steps' => '{{steps}}')), 'text' => array('inputs' => array('text' => '{{prompt}}'))),
+    'prompt' => 'blue cabin',
+)));
+check($response->get_status() === 400, 'submit rejects unresolved numeric markers when their block override is unset');
+check($GLOBALS['comfy_test_remote_calls'] === $calls_before_invalid_override, 'missing and unresolved override markers are rejected before upstream submission');
+$response = comfy_image_submit_workflow(new WP_REST_Request(array(
+    'workflow' => array('sampler' => array('inputs' => array('steps' => 'a prefix {{steps}} suffix')), 'text' => array('inputs' => array('text' => '{{prompt}}'))),
+    'prompt' => 'blue cabin',
+)));
+check($response->get_status() === 400, 'submit rejects partial numeric markers rather than forwarding them unresolved');
+$response = comfy_image_submit_workflow(new WP_REST_Request(array(
+    'workflow' => array('text' => array('inputs' => array('text' => '{{prompt}}'))),
+    'prompt' => 'show {{steps}} literally',
+)));
+$sent_prompt_literal = json_decode($GLOBALS['comfy_test_remote_args']['args']['body'] ?? '', true);
+check($response->get_status() === 200 && ($sent_prompt_literal['prompt']['text']['inputs']['text'] ?? null) === 'show {{steps}} literally', 'numeric marker validation does not inspect the user prompt text');
 
 $calls_before_missing_placeholder = $GLOBALS['comfy_test_remote_calls'];
 $response = comfy_image_submit_workflow(new WP_REST_Request(array(

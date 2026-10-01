@@ -1,10 +1,10 @@
 <?php
 /**
  * Plugin Name: Comfy Image — ComfyUI Integration
- * Plugin URI:  https://example.com/comfy-image
  * Description: Generate images inside Gutenberg using a remote ComfyUI instance.
- * Version:     0.1.0
- * Author:      stephen
+ * Version:     0.1.3
+ * Author:      HappyMonkey AI
+ * Author URI:  https://happymonkey.ai/
  * License:     GPL-2.0+
  * Text Domain: comfy-image
  */
@@ -14,7 +14,7 @@ if (! defined('ABSPATH')) {
 }
 
 if (! defined('COMFY_IMAGE_VERSION')) {
-    define('COMFY_IMAGE_VERSION', '0.1.0');
+    define('COMFY_IMAGE_VERSION', '0.1.3');
 }
 
 // Activation: set default options if not present
@@ -94,8 +94,43 @@ function comfy_image_base_url_field() {
 
 function comfy_image_default_workflow_field() {
     $v = esc_textarea(get_option('comfy_image_default_workflow_template', ''));
-    echo "<textarea name='comfy_image_default_workflow_template' rows='6' cols='60'>" . $v . "</textarea>";
+    $examples = array(
+        'flux2-klein-4b' => array(
+            'label' => __('FLUX.2 Klein 4B', 'comfy-image'),
+            'file' => 'flux2-klein-4b.api.json',
+            'requirements' => __('Requires flux-2-klein-base-4b.safetensors, qwen_3_4b.safetensors, and flux2-vae.safetensors.', 'comfy-image'),
+        ),
+        'z-image-turbo' => array(
+            'label' => __('Z-Image Turbo', 'comfy-image'),
+            'file' => 'z-image-turbo.api.json',
+            'requirements' => __('Requires z_image_turbo_bf16.safetensors, qwen_3_4b.safetensors, and ae.safetensors.', 'comfy-image'),
+        ),
+        'kandinsky5-lite' => array(
+            'label' => __('Kandinsky 5 Lite', 'comfy-image'),
+            'file' => 'kandinsky5-lite.api.json',
+            'requirements' => __('Requires kandinsky5lite_t2i.safetensors, qwen_2.5_vl_7b_fp8_scaled.safetensors, clip_l.safetensors, and ae.safetensors.', 'comfy-image'),
+        ),
+    );
+
+    echo '<label for="comfy_image_workflow_example">' . esc_html__('Start from an example workflow:', 'comfy-image') . ' </label>';
+    echo '<select id="comfy_image_workflow_example">';
+    echo '<option value="">' . esc_html__('Choose an example…', 'comfy-image') . '</option>';
+    foreach ($examples as $slug => $example) {
+        $example_path = __DIR__ . '/examples/' . $example['file'];
+        if (! is_readable($example_path)) {
+            continue;
+        }
+        $example_json = file_get_contents($example_path);
+        if ($example_json === false) {
+            continue;
+        }
+        echo '<option value="' . esc_attr($slug) . '" data-template="' . esc_attr($example_json) . '" data-requirements="' . esc_attr($example['requirements']) . '">' . esc_html($example['label']) . '</option>';
+    }
+    echo '</select>';
+    echo '<p id="comfy_image_example_requirements" class="description">' . esc_html__('Selecting an example replaces the workflow below. Its listed model files and nodes must be installed on your ComfyUI server.', 'comfy-image') . '</p>';
+    echo "<textarea id='comfy_image_default_workflow_template' name='comfy_image_default_workflow_template' rows='12' style='width:100%;max-width:900px;resize:both;box-sizing:border-box;'>" . $v . "</textarea>";
     echo '<p class="description">' . esc_html__('Paste a ComfyUI API-format workflow JSON object and use {{prompt}} where the generated prompt should go.', 'comfy-image') . '</p>';
+    echo '<script>(function(){var select=document.getElementById("comfy_image_workflow_example");var textarea=document.getElementById("comfy_image_default_workflow_template");var requirements=document.getElementById("comfy_image_example_requirements");if(select&&textarea){select.addEventListener("change",function(){var option=this.options[this.selectedIndex];if(option&&option.dataset.template){try{textarea.value=JSON.stringify(JSON.parse(option.dataset.template),null,2);textarea.dispatchEvent(new Event("input",{bubbles:true}));}catch(error){textarea.value=option.dataset.template;}}if(requirements&&option){requirements.textContent=option.dataset.requirements||"' . esc_js(__('Selecting an example replaces the workflow below. Its listed model files and nodes must be installed on your ComfyUI server.', 'comfy-image')) . '";}});}})();</script>';
 }
 
 function comfy_image_auto_save_field() {
@@ -128,6 +163,7 @@ function comfy_image_settings_page() {
     ?>
     <div class="wrap">
         <h1><?php esc_html_e('Comfy Image', 'comfy-image'); ?></h1>
+        <p><?php echo esc_html(sprintf(__('Version %s', 'comfy-image'), COMFY_IMAGE_VERSION)); ?> · <a href="<?php echo esc_url(plugins_url('readme.txt', __FILE__)); ?>"><?php esc_html_e('Setup guide', 'comfy-image'); ?></a> · <a href="https://happymonkey.ai/" target="_blank" rel="noopener noreferrer"><?php esc_html_e('HappyMonkey AI', 'comfy-image'); ?></a> · <a href="https://docs.comfy.org/" target="_blank" rel="noopener noreferrer"><?php esc_html_e('ComfyUI documentation', 'comfy-image'); ?></a></p>
         <form method="post" action="options.php">
             <?php
             settings_fields('comfy_image_settings');

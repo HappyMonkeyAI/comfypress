@@ -27,11 +27,22 @@ tmp=$(mktemp -d "${TMPDIR:-/tmp}/comfy-image-package.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 
 stage="$tmp/comfy-image"
-mkdir -p "$stage/assets" "$stage/includes" "$(dirname -- "$destination")"
+mkdir -p "$stage/assets" "$stage/includes" "$stage/examples" "$(dirname -- "$destination")"
 cp "$root/comfy-image/comfy-image.php" "$stage/comfy-image.php"
 cp "$root/comfy-image/readme.txt" "$stage/readme.txt"
 cp "$root/comfy-image/assets/block.js" "$stage/assets/block.js"
 cp "$root/comfy-image/includes/endpoints.php" "$stage/includes/endpoints.php"
+cp "$root/comfy-image/examples/flux2-klein-4b.api.json" "$stage/examples/flux2-klein-4b.api.json"
+cp "$root/comfy-image/examples/z-image-turbo.api.json" "$stage/examples/z-image-turbo.api.json"
+cp "$root/comfy-image/examples/kandinsky5-lite.api.json" "$stage/examples/kandinsky5-lite.api.json"
+chmod 0644 \
+    "$stage/comfy-image.php" \
+    "$stage/readme.txt" \
+    "$stage/assets/block.js" \
+    "$stage/includes/endpoints.php" \
+    "$stage/examples/flux2-klein-4b.api.json" \
+    "$stage/examples/z-image-turbo.api.json" \
+    "$stage/examples/kandinsky5-lite.api.json"
 
 source_date_epoch=${SOURCE_DATE_EPOCH:-315532800}
 case "$source_date_epoch" in
@@ -45,7 +56,10 @@ touch -d "@$source_date_epoch" \
     "$stage/comfy-image.php" \
     "$stage/readme.txt" \
     "$stage/assets/block.js" \
-    "$stage/includes/endpoints.php"
+    "$stage/includes/endpoints.php" \
+    "$stage/examples/flux2-klein-4b.api.json" \
+    "$stage/examples/z-image-turbo.api.json" \
+    "$stage/examples/kandinsky5-lite.api.json"
 archive="$tmp/comfy-image.zip"
 (
     cd "$tmp"
@@ -53,7 +67,10 @@ archive="$tmp/comfy-image.zip"
         comfy-image/comfy-image.php \
         comfy-image/readme.txt \
         comfy-image/assets/block.js \
-        comfy-image/includes/endpoints.php
+        comfy-image/includes/endpoints.php \
+        comfy-image/examples/flux2-klein-4b.api.json \
+        comfy-image/examples/z-image-turbo.api.json \
+        comfy-image/examples/kandinsky5-lite.api.json
 )
 
 mv "$archive" "$destination"

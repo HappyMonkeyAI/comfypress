@@ -5,6 +5,7 @@
     var useRef = wp.element.useRef;
     var Button = wp.components.Button;
     var TextareaControl = wp.components.TextareaControl;
+    var TextControl = wp.components.TextControl;
     var Spinner = wp.components.Spinner;
     var createBlock = wp.blocks.createBlock;
     var dispatch = wp.data.dispatch;
@@ -46,9 +47,15 @@
         return null;
     }
 
+    function buildFetchImageUrl(restBase, query) {
+        var endpoint = restBase + '/fetch-image';
+        return endpoint + (endpoint.indexOf('?') === -1 ? '?' : '&') + query;
+    }
+
     window.ComfyImageHelpers = {
         parseResponse: parseResponse,
-        extractOutputImage: extractOutputImage
+        extractOutputImage: extractOutputImage,
+        buildFetchImageUrl: buildFetchImageUrl
     };
 
     registerBlockType('comfy/image-generator', {
@@ -57,9 +64,18 @@
         keywords: ['comfy', 'image', 'generate', 'prompt'],
         icon: 'format-image',
         category: 'media',
-        attributes: {},
+        attributes: {
+            prompt: { type: 'string', default: '' },
+            seed: { type: 'string', default: '' },
+            steps: { type: 'string', default: '' },
+            cfg: { type: 'string', default: '' }
+        },
         edit: function (props) {
-            var [prompt, setPrompt] = useState('');
+            var blockAttributes = props.attributes || {};
+            var prompt = typeof blockAttributes.prompt === 'string' ? blockAttributes.prompt : '';
+            var seed = typeof blockAttributes.seed === 'string' ? blockAttributes.seed : '';
+            var steps = typeof blockAttributes.steps === 'string' ? blockAttributes.steps : '';
+            var cfg = typeof blockAttributes.cfg === 'string' ? blockAttributes.cfg : '';
             var [status, setStatus] = useState('idle');
             var [progress, setProgress] = useState(null);
             var pollRef = useRef({ timer: null, cancelled: false, inFlight: false, runId: 0 });
@@ -102,12 +118,20 @@
                     return;
                 }
 
+                var requestPayload = { workflow: workflow, prompt: prompt };
+                ['seed', 'steps', 'cfg'].forEach(function (name) {
+                    var value = blockAttributes[name];
+                    if (typeof value === 'string' && value.trim() !== '') {
+                        requestPayload[name] = value.trim();
+                    }
+                });
+
                 // POST to submit-workflow
                 fetch(restBase + '/submit-workflow', {
                     method: 'POST',
                     credentials: 'same-origin',
                     headers: Object.assign({ 'Content-Type': 'application/json' }, defaultHeaders),
-                    body: JSON.stringify({ workflow: workflow, prompt: prompt })
+                    body: JSON.stringify(requestPayload)
                 }).then(parseResponse)
                 .then(function (data) {
                     if (!isCurrentRun()) return;
@@ -123,6 +147,7 @@
                     var attempts = 0;
                     var maxAttempts = 40; // ~2 minutes if interval 3s
                     var interval = 3000;
+                    var saveToMediaEnabled = pluginSettings.auto_save_to_media !== false && pluginSettings.auto_save_to_media !== '';
 
                     var poll = function () {
                         if (!isCurrentRun() || pollRef.current.cancelled) return;
@@ -136,12 +161,12 @@
                             var image = extractOutputImage(st, prompt_id);
 
                             if (image) {
-                                setProgress(pluginSettings.auto_save_to_media === false ? 'Result available. Loading the ComfyUI image...' : 'Result available. Importing into the Media Library...');
+                                setProgress(saveToMediaEnabled ? 'Result available. Importing into the Media Library...' : 'Result available. Loading the ComfyUI image...');
                                 var imageQuery = 'filename=' + encodeURIComponent(image.filename) +
                                     '&subfolder=' + encodeURIComponent(image.subfolder) +
                                     '&type=' + encodeURIComponent(image.type);
-                                if (pluginSettings.auto_save_to_media !== false) imageQuery += '&import=1';
-                                fetch(restBase + '/fetch-image?' + imageQuery, {
+                                if (saveToMediaEnabled) imageQuery += '&import=1';
+                                fetch(buildFetchImageUrl(restBase, imageQuery), {
                                     method: 'GET', credentials: 'same-origin', headers: defaultHeaders
                                 }).then(parseResponse)
                                 .then(function (imp) {
@@ -199,8 +224,32 @@
                 setProgress('Status polling stopped. The ComfyUI job may continue running.');
             }
 
+            function setNumericAttribute(name, value) {
+                var attributes = {};
+                attributes[name] = value;
+                props.setAttributes(attributes);
+            }
+
             return el('div', { className: props.className },
-                el(TextareaControl, { label: 'Prompt', value: prompt, onChange: function (v) { setPrompt(v); } }),
+                el(TextareaControl, { label: 'Prompt', value: prompt, onChange: function (v) { props.setAttributes({ prompt: v }); } }),
+                el(TextControl, {
+                    label: 'Seed override (optional)',
+                    help: '0–18446744073709551615. Add {{seed}} as a complete value in the workflow template.',
+                    type: 'text', inputMode: 'numeric', pattern: '[0-9]*', maxLength: 20, value: seed,
+                    onChange: function (value) { setNumericAttribute('seed', value); }
+                }),
+                el(TextControl, {
+                    label: 'Steps override (optional)',
+                    help: '1–4096. Add {{steps}} as a complete value in the workflow template.',
+                    type: 'number', min: '1', max: '4096', step: '1', value: steps,
+                    onChange: function (value) { setNumericAttribute('steps', value); }
+                }),
+                el(TextControl, {
+                    label: 'CFG override (optional)',
+                    help: '0–100 with up to two decimal places. Add {{cfg}} as a complete value in the workflow template.',
+                    type: 'number', min: '0', max: '100', step: '0.01', value: cfg,
+                    onChange: function (value) { setNumericAttribute('cfg', value); }
+                }),
                 el('div', { style: { marginTop: '8px' } },
                     el(Button, { isPrimary: true, onClick: submitWorkflow, disabled: status === 'submitting' || status === 'submitted' }, status === 'error' || status === 'cancelled' ? 'Retry' : 'Generate'),
                     status === 'submitted' ? el(Button, { isSecondary: true, onClick: cancelPolling }, 'Stop polling') : null,
