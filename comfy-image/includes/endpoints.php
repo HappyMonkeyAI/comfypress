@@ -73,6 +73,129 @@ function comfy_image_replace_prompt_placeholder($value, $prompt, &$replaced) {
     return $value;
 }
 
+function comfy_image_compare_unsigned_decimal_strings($value, $maximum) {
+    $value = ltrim((string) $value, '0');
+    $maximum = ltrim((string) $maximum, '0');
+    $value = $value === '' ? '0' : $value;
+    $maximum = $maximum === '' ? '0' : $maximum;
+
+    if (strlen($value) !== strlen($maximum)) {
+        return strlen($value) < strlen($maximum) ? -1 : 1;
+    }
+
+    return strcmp($value, $maximum);
+}
+
+/**
+ * Validate and normalize an override to a safe JSON numeric literal.
+ */
+function comfy_image_parse_numeric_override($name, $value) {
+    if ($name === 'seed' || $name === 'steps') {
+        if (! is_string($value) && ! is_int($value)) {
+            return false;
+        }
+
+        $digits = trim((string) $value);
+        if (! preg_match('/\\A[0-9]+\\z/', $digits)) {
+            return false;
+        }
+
+        $normalized = ltrim($digits, '0');
+        $normalized = $normalized === '' ? '0' : $normalized;
+        $maximum = $name === 'seed' ? '18446744073709551615' : '4096';
+        if (comfy_image_compare_unsigned_decimal_strings($normalized, $maximum) > 0) {
+            return false;
+        }
+        if ($name === 'steps' && $normalized === '0') {
+            return false;
+        }
+
+        return $normalized;
+    }
+
+    if ($name === 'cfg') {
+        if (! is_string($value) && ! is_int($value) && ! is_float($value)) {
+            return false;
+        }
+
+        $raw = is_float($value) ? json_encode($value) : trim((string) $value);
+        if (! is_string($raw) || ! preg_match('/\\A(?:[0-9]+(?:\\.[0-9]{1,2})?|\\.[0-9]{1,2})\\z/', $raw)) {
+            return false;
+        }
+
+        $number = (float) $raw;
+        if (! is_finite($number) || $number < 0 || $number > 100) {
+            return false;
+        }
+
+        return json_encode($number);
+    }
+
+    return false;
+}
+
+/**
+ * Replace exact numeric markers so ComfyUI receives JSON numbers, never strings.
+ */
+function comfy_image_replace_exact_placeholder($value, $marker, $replacement, &$replaced) {
+    if (is_string($value)) {
+        if ($value === $marker) {
+            $replaced = true;
+            return $replacement;
+        }
+        return $value;
+    }
+
+    if (is_array($value)) {
+        foreach ($value as $key => $child) {
+            $value[$key] = comfy_image_replace_exact_placeholder($child, $marker, $replacement, $replaced);
+        }
+        return $value;
+    }
+
+    if (is_object($value)) {
+        foreach ($value as $key => $child) {
+            $value->$key = comfy_image_replace_exact_placeholder($child, $marker, $replacement, $replaced);
+        }
+    }
+
+    return $value;
+}
+
+function comfy_image_contains_exact_placeholder($value, $marker) {
+    if (is_string($value)) {
+        return $value === $marker;
+    }
+    if (! is_array($value) && ! is_object($value)) {
+        return false;
+    }
+
+    foreach ((array) $value as $child) {
+        if (comfy_image_contains_exact_placeholder($child, $marker)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function comfy_image_contains_template_marker($value, $marker) {
+    if (is_string($value)) {
+        return strpos($value, $marker) !== false;
+    }
+    if (! is_array($value) && ! is_object($value)) {
+        return false;
+    }
+
+    foreach ((array) $value as $child) {
+        if (comfy_image_contains_template_marker($child, $marker)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 /**
  * Apply the configured role allow-list in addition to the edit_posts capability gate.
  * Administrators with edit_posts retain access so the configured feature remains manageable.
@@ -200,8 +323,9 @@ add_action('rest_api_init', function () {
 });
 
 /**
- * Submit a workflow JSON to ComfyUI /prompt
- * Expects JSON body: { workflow: {...}, prompt: "optional prompt" }
+ * Submit a workflow JSON to ComfyUI /prompt.
+ * Expects: { workflow: {...}, prompt: "...", seed?: "...", steps?: "...", cfg?: "..." }.
+ * Numeric overrides require exact-value workflow markers and are validated before any ComfyUI request.
  */
 function comfy_image_submit_workflow( WP_REST_Request $request ) {
     $params = $request->get_json_params();
@@ -220,6 +344,51 @@ function comfy_image_submit_workflow( WP_REST_Request $request ) {
     }
 
     $workflow = $params['workflow'];
+
+    $numeric_tokens = array();
+    foreach (array('seed', 'steps', 'cfg') as $name) {
+        $marker = '{{' . $name . '}}';
+        $has_override = array_key_exists($name, $params)
+            && $params[$name] !== null
+            && (! is_string($params[$name]) || trim($params[$name]) !== '');
+
+        if (! $has_override) {
+            if (comfy_image_contains_template_marker($workflow, $marker)) {
+                return new WP_REST_Response(array('error' => 'A value is required for the ' . $name . ' workflow marker'), 400);
+            }
+            continue;
+        }
+
+        $numeric_value = comfy_image_parse_numeric_override($name, $params[$name]);
+        if ($numeric_value === false) {
+            return new WP_REST_Response(array('error' => 'Invalid ' . $name . ' override'), 400);
+        }
+
+        if (! comfy_image_contains_exact_placeholder($workflow, $marker)) {
+            return new WP_REST_Response(array('error' => 'Workflow template must contain an exact ' . $marker . ' marker for this override'), 400);
+        }
+
+        $workflow_source = wp_json_encode(array('workflow' => $workflow, 'prompt' => $prompt));
+        if ($workflow_source === false) {
+            return new WP_REST_Response(array('error' => 'Failed to encode workflow'), 500);
+        }
+
+        try {
+            do {
+                $token = '__COMFY_IMAGE_NUM_' . bin2hex(random_bytes(16)) . '__';
+            } while (strpos($workflow_source, $token) !== false);
+        } catch (Throwable $error) {
+            return new WP_REST_Response(array('error' => 'Unable to prepare numeric workflow values'), 500);
+        }
+
+        $marker_replaced = false;
+        $workflow = comfy_image_replace_exact_placeholder($workflow, $marker, $token, $marker_replaced);
+        if (! $marker_replaced) {
+            return new WP_REST_Response(array('error' => 'Unable to apply the ' . $name . ' override'), 500);
+        }
+        $numeric_tokens[] = array('token' => $token, 'value' => $numeric_value);
+    }
+
     $prompt_replaced = false;
     $workflow = comfy_image_replace_prompt_placeholder($workflow, $prompt, $prompt_replaced);
     if (! $prompt_replaced) {
@@ -230,6 +399,15 @@ function comfy_image_submit_workflow( WP_REST_Request $request ) {
     $body = wp_json_encode(array('prompt' => $workflow));
     if ($body === false) {
         return new WP_REST_Response(array('error' => 'Failed to encode workflow'), 500);
+    }
+
+    foreach ($numeric_tokens as $numeric_token) {
+        $encoded_token = wp_json_encode($numeric_token['token']);
+        $replacement_count = 0;
+        $body = str_replace($encoded_token, $numeric_token['value'], $body, $replacement_count);
+        if ($replacement_count < 1) {
+            return new WP_REST_Response(array('error' => 'Unable to encode numeric workflow value'), 500);
+        }
     }
 
     $base = comfy_image_get_base_url();
