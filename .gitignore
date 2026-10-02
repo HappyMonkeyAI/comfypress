@@ -55,3 +55,8 @@ build/
 local-config.php
 wp-config-local.php
 image-image-gen
+
+# Build artifacts and local databases
+*.zip
+*.tar.gz
+*.db

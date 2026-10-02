@@ -1,24 +1,24 @@
 {
   "name": "Comfy Image - WordPress ComfyUI Integration",
   "slug": "comfy-image",
-  "summary": "A WordPress plugin that enables Gutenberg users to generate and insert images using a remote ComfyUI instance via slash commands or a block widget.",
-  "version": "0.1.0",
+  "summary": "A WordPress plugin that enables authenticated Gutenberg users to generate and insert images using a configured ComfyUI instance through a dedicated block discoverable from the native slash inserter.",
+  "version": "0.1.3",
   "license": "GPL-2.0+",
   "goals": [
     "Let editors generate images on-the-fly inside Gutenberg using ComfyUI",
-    "Expose a slash command `/comfy` and a Gutenberg block to create images from text prompts",
+    "Expose a Gutenberg image-generation block discoverable by typing `/comfy` in the native block inserter",
     "Provide an admin UI to configure ComfyUI endpoint, workflow templates and media options",
     "Save generated images to the WP Media Library by default and insert them into posts/pages"
   ],
   "primary_features": [
-    "Slash-command prompt: `/comfy <description>` inside Gutenberg to call ComfyUI (planned)",
-    "Gutenberg block: dedicated UI for prompt + basic settings (seed, steps) — implemented (minimal)",
+    "Native slash-inserter discovery: `/comfy` inserts the Comfy Image Generator block; direct `/comfy <description>` inline execution is not implemented",
+    "Gutenberg block: prompt plus optional per-block seed/steps/CFG overrides through exact workflow markers (unreleased), bounded progress polling, retry, local polling cancellation, and native image insertion — implemented; live acceptance of the new controls remains pending",
     "Admin settings page to set ComfyUI URL, default workflow, and save-to-media behavior — implemented",
     "Server-side REST endpoints that submit workflows, poll for completion, fetch results, and import into WP Media — implemented",
-    "Client-side UX: progress updates and image insertion into post content — implemented (basic)"
+    "Client-side UX: status messages, timeout, retry, cancellation of local polling, image insertion, and saved prompt restoration — implemented; happy path browser-verified"
   ],
   "secondary_features": [
-    "Rate limiting and abuse protection (pending)",
+    "Per-user quota allows 10 requests in a fixed 60-second window anchored at the first request and uses a MySQL/MariaDB named advisory lock; a live disposable WordPress run accepted 10 of 24 concurrent requests and denied 14; no site-wide quota is in first-release scope",
     "Multiple workflow templates (shop, hero images, avatars, etc.)",
     "Optional model/workflow selection per-block",
     "CORS and host allowlist for ComfyUI integration",
@@ -27,10 +27,10 @@
   "tech_stack": {
     "wordpress": ">=5.9",
     "php": ">=8.0",
-    "javascript": "ESNext (Gutenberg/React via @wordpress/scripts)",
+    "javascript": "Classic editor script using WordPress/Gutenberg globals; no bundled build pipeline is currently required",
     "comfyui": "ComfyUI HTTP API (upload, prompt, history, view)",
-    "build_tools": "wp-scripts (recommended), npm/yarn",
-    "optional": "Node.js for building editor assets"
+    "build_tools": "No editor bundle step; scripts/build-plugin.sh builds a normalized ZIP (requires zip)",
+    "optional": "Node.js runs the repository JavaScript contract suite"
   },
   "comfyui_integration": {
     "endpoints": {
@@ -39,40 +39,41 @@
       "history": "GET /history/{prompt_id}",
       "view": "GET /view?filename={filename}"
     },
-    "notes": "Workflows are JSON objects; the plugin ships an example template under templates/. The plugin proxies submit/history/view calls and supports server-side import of resulting images into WP Media."
+    "notes": "The submit endpoint accepts {workflow, prompt}; the workflow must include the literal {{prompt}} marker. The client sends the WordPress REST nonce and consumes prompt_id, ComfyUI history output metadata, and an attachment_id/url response from the media-import route. Raw upstream bodies and headers are not returned."
   },
   "admin_settings": {
-    "comfy_base_url": "http://localhost:8188/",
-    "default_workflow_template": "path or JSON",
+    "comfy_base_url": "http://127.0.0.1:8188",
+    "default_workflow_template": "ComfyUI API-format workflow JSON containing {{prompt}}",
     "auto_save_to_media": true,
     "allow_anonymous_generation": false,
     "max_image_size_mb": 10,
     "allowed_roles": ["editor", "author"]
   },
   "security_considerations": [
-    "Use `check_ajax_referer` for AJAX endpoints where appropriate and protect REST routes if needed",
-    "Capability checks: `current_user_can('edit_posts')` or `manage_options` where appropriate",
+    "REST routes require `edit_posts` and a selected role (default editor/author); users with `manage_options` bypass the role list but still require `edit_posts`. The editor sends `X-WP-Nonce` for WordPress REST cookie authentication. Live HTTP checks verified cookie/nonce behavior on WordPress 6.9.4 and, on WordPress 5.9.3/PHP 8.0.19, anonymous and excluded-role denial across all four routes, `manage_options` without `edit_posts` denial, administrator bypass, allowed-role submit, and `upload_files` denial before fetch; forced attachment-registration failure cleaned up the uploaded file. See `PROGRESS.md` for outcomes.",
     "Sanitize all inputs (`sanitize_text_field`, `esc_url_raw`) and validate remote responses",
-    "Restrict ComfyUI host via admin settings and optionally an allowlist",
-    "Add rate-limiting (transient-based) to avoid abuse",
+    "Only administrators configure the ComfyUI HTTP(S) base URL; private/LAN hosts and optional reverse-proxy path prefixes are intentionally allowed, and redirects are disabled. This trusted-administrator boundary is not a strict egress allowlist; a compromised or misconfigured administrator could direct WordPress to internal services (SSRF risk).",
+    "Workflow submission uses a fixed 10-per-60-second transient window that later requests do not extend, serialized by a MySQL/MariaDB named advisory lock; lock contention/storage failure denies the request. Contract tests cover window and lock behavior; a live disposable WordPress concurrency run accepted 10 of 24 simultaneous requests and denied 14, with counter readback and cleanup verified.",
     "When saving images to media, verify MIME and use WordPress upload APIs"
   ],
   "development_state": {
     "scaffold": "created (basic plugin files, settings page, templates)",
-    "endpoints": "REST endpoints implemented: submit-workflow, check-status, fetch-image (import to media)",
-    "gutenberg_block": "Minimal block implemented (assets/block.js) that submits workflows, polls for results and inserts images",
-    "upload_endpoint": "stub (multipart upload forwarding to ComfyUI pending)",
-    "notes": "This is an initial working prototype: settings UI, REST proxy endpoints, image import, and a basic Gutenberg block are implemented. Security hardening, rate-limiting, UX polish, and tests remain to be added."
+    "endpoints": "REST routes submit-workflow, check-status, and fetch-image are implemented. Workflow submission uses the explicit {{prompt}} marker and optional {{seed}}, {{steps}}, and {{cfg}} markers; numeric inputs are validated and emitted as JSON numbers. Empty overrides preserve administrator workflow defaults; the full unsigned 64-bit seed is preserved exactly. Image import enforces capability, size, MIME, filename, and redirect checks. Settings offers bundled FLUX.2 Klein 4B, Z-Image Turbo, and Kandinsky 5 Lite API-format examples; the latter two are adaptations of repository-supplied editor workflows and have not yet been live-submitted in API format. The legacy templates/example_workflow.json scaffold is not API-format and is not used by the plugin.",
+    "gutenberg_block": "The Comfy Image Generator block is searchable through the native `/comfy` slash inserter, submits with X-WP-Nonce, polls status, supports retry and stopping local polling, imports output, and inserts a core/image block. Direct inline `/comfy <description>` is not implemented.",
+    "upload_endpoint": "deferred: multipart upload forwarding remains a deliberate HTTP 501 stub; current scope is text-to-image",
+    "package": "scripts/build-plugin.sh produces a deterministic seven-file ZIP including the three selectable workflow examples and refuses overwrite. The 0.1.2 package integrity/source bytes/reproducibility and install/activate on plugin-clean WordPress 6.9.4/PHP 8.3.30 and WordPress 5.9.3/PHP 8.0.19 targets were verified; all four REST routes registered on both targets. A temporary 0.1.3 candidate ZIP was built and checked for archive integrity, seven-file membership, and version metadata; it has not been installed.",
+    "notes": "As of 2026-10-01, the working-tree plugin version is 0.1.3. A temporary candidate ZIP was built and checked, but no 0.1.3 package has been installed or released; the previously verified 0.1.2 package remains unchanged. php -n tests/php/run.php passed 93 checks and node tests/js/run.js passed 38 checks. The unreleased working tree includes optional per-block seed/steps/CFG overrides behind explicit markers; contract-tested, but live Gutenberg and generation acceptance remain pending. A local WordPress 6.9.4 Gutenberg happy-path run generated/imported images, inserted native Image blocks, and preserved the saved prompt after editor reload; the draft remains unpublished. Live HTTP on WordPress 6.9.4 verified cookie-auth nonce behavior; WordPress 5.9.3/PHP 8.0.19 verified route denials, role/capability boundaries, admin bypass, missing-upload_files rejection, failed-import file cleanup, payload destination binding, and disabled redirect following against a local mock. No real generation was made by those security probes; no strict production egress allowlist is claimed. A disposable live quota run accepted 10 of 24 concurrent requests and denied 14, with counter readback and cleanup. The exact 0.1.2 ZIP installed on WordPress 5.9.3/PHP 8.0.19; browser-level mocked failure/retry also passed. The support-floor point is verified, but not every patch combination. Direct ComfyUI tests remain separate from WordPress integration; distribution is on hold and publication is not authorized."
   },
   "todo": [
     { "id": "1", "title": "Create plugin scaffold and repo", "status": "completed" },
     { "id": "2", "title": "Add plugin metadata and hooks", "status": "completed" },
     { "id": "3", "title": "Implement backend ComfyUI proxy endpoints", "status": "completed" },
-    { "id": "4", "title": "Build Gutenberg block and slash command", "status": "completed (block implemented; slash command pending)" },
+    { "id": "4", "title": "Build Gutenberg block and slash-inserter discovery", "status": "partial (native `/comfy` block discovery and happy-path editor flow verified; direct inline `/comfy <prompt>` is deferred)" },
     { "id": "5", "title": "Add admin settings (Comfy URL, options)", "status": "completed" },
     { "id": "6", "title": "Implement image UI and media handling", "status": "completed" },
-    { "id": "7", "title": "Add security, sanitization and rate-limit", "status": "pending" },
-    { "id": "8", "title": "Write tests, docs and package plugin", "status": "pending" }
+    { "id": "7", "title": "Add security, sanitization and rate-limit", "status": "source and stub coverage include a fail-closed named advisory lock; live quota concurrency and REST negative auth/media checks verified" },
+    { "id": "8", "title": "Write tests, docs and package plugin", "status": "partial (contract tests, docs, reproducible archive, and package installation on WordPress 6.9.4/PHP 8.3.30 plus the WordPress 5.9.3/PHP 8.0.19 floor verified; distribution channel and publication remain unperformed)" },
+    { "id": "9", "title": "Add per-block seed/steps/CFG overrides", "status": "implemented in unreleased worktree; 93 PHP and 38 JavaScript contract checks pass; live Gutenberg/ComfyUI acceptance pending; 0.1.2 package unchanged" }
   ],
   "how_to_run_locally": {
     "requirements": ["WordPress development environment (LocalWP, Docker, or WP-CLI)", "ComfyUI instance accessible from the host running WordPress"],
@@ -80,7 +81,7 @@
       "Copy the plugin folder into wp-content/plugins/comfy-image",
       "Activate the plugin in WP Admin > Plugins",
       "Open Settings > Comfy Image and confirm or update the ComfyUI Base URL",
-      "Open Gutenberg editor, add the 'Comfy Image' block, enter a prompt and click Generate"
+      "Open Gutenberg editor, type `/comfy` to insert the Comfy Image Generator block, enter a prompt and click Generate"
     ]
   },
   "files_of_interest": [
@@ -88,18 +89,18 @@
     "comfy-image/includes/endpoints.php",
     "comfy-image/assets/block.js",
     "comfy-image/templates/example_workflow.json",
-    "image-image-gen/js/main.js",
-    "image-image-gen/README.md",
-    "PLAN.md"
+    "PLAN.md",
+    "tests/php/run.php",
+    "tests/js/run.js",
+    "scripts/build-plugin.sh"
   ],
   "open_questions": [
-    "Do we want to add REST nonce validation in addition to capability checks?",
-    "What rate limits should be imposed (per-user, per-site) to prevent abuse?",
+    "Should a site-wide quota, usage logs, or model selection be added after the text-to-image first release?",
     "Should the plugin implement an API key/auth between WP and ComfyUI for private ComfyUI instances?"
   ],
   "contact": {
     "owner": "stephen",
-    "project_root": "/home/stephen/Documents/www/comfypress"
+    "project_root": "repository root"
   },
   "notes": "This file is kept up-to-date to reflect the current prototype status. Follow PLAN.md for further milestones."
 }
