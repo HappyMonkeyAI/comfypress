@@ -5,7 +5,8 @@
  * Version:     0.1.3
  * Author:      HappyMonkey AI
  * Author URI:  https://happymonkey.ai/
- * License:     GPL-2.0+
+ * License:     MIT
+ * License URI: https://opensource.org/license/mit/
  * Text Domain: comfy-image
  */
 

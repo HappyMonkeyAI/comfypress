@@ -5,7 +5,7 @@ Requires at least: 5.9
 Tested up to: 6.9
 Requires PHP: 8.0
 Stable tag: 0.1.3
-License: GPLv2 or later
+License: MIT
 
 Generate and insert ComfyUI images from the Gutenberg editor. Type `/comfy` in the native block inserter to find the Comfy Image Generator block, enter a prompt, and select Generate. This does not implement a direct `/comfy <prompt>` inline command.
 

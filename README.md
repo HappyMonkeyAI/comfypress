@@ -1,28 +1,64 @@
-ComfyPress — ComfyUI WordPress Plugin
+# ComfyPress
 
-The WordPress plugin is in `comfy-image/`. It provides authenticated Gutenberg workflow submission, ComfyUI history polling, server-side image import, and insertion of the resulting image into post content.
+ComfyPress is a WordPress plugin that lets editors generate images with a connected ComfyUI server from the Gutenberg editor, then add the results to the WordPress Media Library and a post.
 
-Current behavior
-- In Gutenberg, type `/comfy` to find and insert the “Comfy Image Generator” block. Enter the prompt in the block and select Generate. This is native block-inserter discovery; `/comfy <description>` as a direct inline prompt command is not implemented.
-- Configure the ComfyUI HTTP(S) base URL and an API-format workflow JSON in Settings > Comfy Image. The workflow must contain the literal `{{prompt}}` marker where the prompt should be substituted. The workflow editor can be resized horizontally and vertically; selecting a bundled FLUX.2 Klein 4B, Z-Image Turbo, or Kandinsky 5 Lite example prepopulates it and shows the required model files. In the unreleased working tree, optional block-level seed/steps/CFG values require matching whole-value `{{seed}}`, `{{steps}}`, and `{{cfg}}` markers; leave the fields blank to preserve administrator-configured values. The released 0.1.2 package does not contain these controls.
-- The block sends the workflow and prompt to `POST /wp-json/comfy-image/v1/submit-workflow`, polls `GET /check-status/{prompt_id}`, then requests `GET /fetch-image?filename=…&subfolder=…&type=…&import=1`. On success it inserts a native `core/image` block referencing the new Media Library attachment.
-- The upload-forwarding endpoint remains a deliberate HTTP 501 stub; this release scope is text-to-image, not image-to-image.
+## What it does
 
-Security and limits
-- REST routes require `edit_posts` and a role selected in Settings > Comfy Image (default: Editor and Author). Users with `manage_options` bypass the role list but still need `edit_posts`. Cookie-authenticated REST requests use the WordPress REST nonce sent as `X-WP-Nonce`; media import additionally requires `upload_files`.
-- Only administrators configure the ComfyUI destination. HTTP(S), private/LAN hosts, and reverse-proxy path prefixes are intentionally supported; credentials, query strings, and fragments are rejected, redirects are disabled, and ordinary workflow requests cannot override the configured destination. This is a trusted-administrator boundary, not an egress allowlist: a compromised or misconfigured administrator can direct WordPress toward internal services (SSRF risk).
-- Workflow submission is limited to 10 requests per authenticated user in a fixed 60-second window anchored by the first request; later requests do not extend it. A MySQL/MariaDB named advisory lock serializes counter updates across PHP workers; lock contention or limiter-storage failure denies the request. Contract tests cover fixed-window expiry/TTL, lock acquisition/release, and fail-closed behavior; a live disposable WordPress concurrency run accepted 10 of 24 simultaneous requests and denied 14, with counter readback and cleanup verified. Image downloads have a bounded response size (configured maximum, clamped to 1–100 MB), finite timeouts, and PNG/JPEG/WebP/GIF content validation before Media Library writes.
-- Client responses do not expose raw upstream response bodies or headers.
+- Adds a **Comfy Image Generator** block to Gutenberg. Type `/comfy` in the block inserter to find it.
+- Sends a prompt through a ComfyUI API-format workflow and imports the resulting image into WordPress.
+- Includes example workflows for FLUX.2 Klein 4B, Z-Image Turbo, and Kandinsky 5 Lite.
+- Supports optional per-block seed, steps, and CFG values when the selected workflow contains the matching `{{seed}}`, `{{steps}}`, and `{{cfg}}` markers.
 
-Remote ComfyUI with Cloudflare Tunnel
+The `/comfy` shortcut finds the block; it does not run an inline `/comfy <prompt>` command.
+
+## Requirements
+
+- WordPress 5.9 or later
+- PHP 8.0 or later
+- A ComfyUI server that the WordPress host can reach over HTTP(S)
+
+## Install and configure
+
+1. Copy the `comfy-image/` directory into `wp-content/plugins/` and activate **ComfyPress** in WordPress.
+2. Open **Settings → Comfy Image** and enter the ComfyUI base URL.
+3. Choose a bundled workflow or paste a ComfyUI API-format workflow JSON. It must contain the literal `{{prompt}}` marker where the prompt should go.
+4. Make sure the ComfyUI server has the model files and custom nodes required by that workflow.
+5. In the block editor, insert the Comfy Image Generator block, enter a prompt, and select **Generate**. The resulting image is imported into the Media Library and inserted into the post.
+
+Leave the seed, steps, or CFG override blank to keep the value already set in the workflow. To use an override, add its matching marker as a whole JSON value in the workflow.
+
+## Security and limits
+
+- Generation routes require `edit_posts` and an allowed WordPress role (Editor and Author by default). Importing an image also requires `upload_files`.
+- ComfyUI destinations are configured by administrators. Local and private-network addresses are supported for self-hosted setups, so this is not an outbound-network allowlist. Only configure a ComfyUI server you trust.
+- Each authenticated user is limited to 10 workflow submissions per 60-second window.
+- The current feature scope is text-to-image. Image-upload forwarding is not implemented, and its endpoint returns HTTP 501.
+
+## Development
+
+Run the repository checks from the project root:
+
+```sh
+php -n tests/php/run.php
+node tests/js/run.js
+```
+
+Build a clean plugin ZIP with:
+
+```sh
+scripts/build-plugin.sh /absolute/path/to/comfy-image.zip
+```
+
+The build includes the three selectable workflow examples and normalizes archive timestamps for reproducible output. It requires `zip` and refuses to overwrite an existing destination.
+
+The source currently reports version 0.1.3. The 0.1.3 ZIP is a checked candidate, not an installed or released package; the previously verified 0.1.2 package remains unchanged. Live Gutenberg and ComfyUI acceptance for the new per-block numeric overrides is still pending.
+
+## License
+
+ComfyPress is licensed under the MIT License. See [LICENSE](LICENSE).
+
+## Remote ComfyUI with Cloudflare Tunnel
+
 For a ComfyUI instance running at home or on a workstation, do not expose ComfyUI's port (normally `8188`) directly to the internet. Put the companion [ComfyPress Gateway](https://github.com/SPhillips1337/comfypress-gateway) in front of it, then configure a Cloudflare Tunnel public hostname to reach the gateway on the local machine (default gateway listener: `http://127.0.0.1:8190`). The tunnel provides connectivity and HTTPS at the public hostname; it does not authenticate API requests by itself.
 
 In Settings > Comfy Image, set the ComfyUI Base URL to the tunnel's HTTPS hostname and enter a gateway key in **Gateway API token**. ComfyPress sends the key in the HTTP authorization header from the WordPress server for workflow submission, history polling, and image retrieval; it is not localized into editor JavaScript. The token field never renders the saved secret. Prefer defining `COMFY_IMAGE_GATEWAY_API_TOKEN` in `wp-config.php` for configuration outside the WordPress options database. Create one key per WordPress site and revoke it if exposed. Route the Tunnel only to the gateway—never add a direct route to ComfyUI—and keep the local ComfyUI port blocked from untrusted networks. See the gateway README for Compose, Cloudflare Tunnel, key-rotation, and host-network instructions.
-
-Development checks
-Run `php tests/php/run.php` and `node tests/js/run.js` from the repository root. The current working tree passes 104 PHP checks and 38 JavaScript checks. These lightweight contract harnesses mock WordPress APIs and ComfyUI HTTP responses; by themselves they do not prove live database-lock behavior or WordPress integration. Separately, the local WordPress 6.9.4 Gutenberg happy path generated/imported images, inserted native Image blocks, and restored the saved prompt after editor reload. The unreleased working tree adds optional per-block seed/steps/CFG overrides behind exact workflow markers; their PHP/JS contracts pass, but this feature has not yet had live Gutenberg or generation acceptance. The 0.1.2 package remains unchanged. Three supplied workflows were also smoke-tested directly against ComfyUI; those direct tests do not exercise the WordPress proxy.
-
-To build the clean plugin ZIP, run `scripts/build-plugin.sh /absolute/path/to/comfy-image.zip`. The script packages the runtime/readme files and the three API-format examples, normalizes timestamps for reproducible output, and refuses to overwrite an existing destination. Set `SOURCE_DATE_EPOCH` to choose a different normalized archive timestamp. The legacy `templates/example_workflow.json` scaffold remains excluded.
-
-Release status
-First-release scope is text-to-image through the existing block and Media Library insertion. The unreleased worktree adds optional per-block seed/steps/CFG controls behind exact workflow markers; live Gutenberg and generation acceptance for those controls remains pending and the existing 0.1.2 package is unchanged. Direct `/comfy <prompt>` execution and multipart `/upload-image` forwarding remain deferred; the route intentionally returns HTTP 501. On local WordPress 6.9.4, the successful Gutenberg flow generated/imported images and inserted native Image blocks; a saved draft preserved its prompt after reload. Live authenticated HTTP checks on WordPress 5.9.3/PHP 8.0.19 exercised all four route denials, the administrator role-list bypass, the `edit_posts` and `upload_files` boundaries, attachment-failure cleanup, configured-destination binding, and actual 302 non-follow behavior against a local mock. The 0.1.2 ZIP also installed and activated on WordPress 6.9.4/PHP 8.3.30; all four routes were registered on both runtimes. No real generation was made by the security probes, and this does not establish a strict production egress allowlist. Browser-level mocked failure/retry and live quota concurrency also passed. The final refreshed ZIP and its hash are recorded in `PROGRESS.md`. Release-channel choice and WordPress.org/hosted distribution steps remain unperformed; see `PLAN.md` and `PROGRESS.md` for remaining gates.
