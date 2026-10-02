@@ -11,9 +11,11 @@ The browser calls WordPress REST; PHP calls the administrator-configured ComfyUI
 
 The URL validator accepts administrator-configured HTTP(S) base URLs, including optional reverse-proxy path prefixes and private/LAN hosts; it rejects credentials/query/fragment, redirects are disabled, and workflow payloads cannot override the destination. No strict host allowlist exists: this is an explicit trusted-administrator boundary with SSRF risk after administrator compromise/misconfiguration.
 
-The per-user 10-per-60-second transient quota is serialized with a MySQL/MariaDB named advisory lock scoped by database, table prefix, multisite blog, and user. Lock or transient-write failure denies the request. Stub tests verify lock acquisition/release/contention; live database concurrency still needs a disposable WordPress integration test.
+The per-user 10-per-60-second transient quota is serialized with a MySQL/MariaDB named advisory lock scoped by database, table prefix, multisite blog, and user. Lock or transient-write failure denies the request. Stub tests verify lock acquisition/release/contention; a live disposable WordPress concurrency run accepted 10 of 24 simultaneous requests and denied 14, with counter readback and cleanup (see `PROGRESS.md`, 2026-09-29).
 
-`comfy-image/examples/flux1-krea-dev.api.json` is a repository-only API-format starter fixture with the required `{{prompt}}` marker. It is not auto-loaded or included in the release ZIP without separate approval; the legacy `templates/example_workflow.json` remains a non-API mock.
+`comfy-image/examples/` contains the selectable API-format FLUX.2 Klein 4B, Z-Image Turbo, and Kandinsky 5 Lite examples. The latter two are API adaptations of editor workflows and have not yet been live-submitted in API format. The legacy `templates/example_workflow.json` remains a non-API mock.
+
+Settings loads example JSON from disk at request time. Verify readability as the actual WordPress web-server identity (`www-data` in the local Compose runtime), not only as root/CLI: helper-generated files may have mode 0600 and silently disappear from the picker when PHP-FPM cannot read them. These bundled text assets need mode 0644; the ZIP builder also normalizes staged runtime files to 0644.
 
 Image import validates filename/subfolder/type, bounds download bytes/time, verifies both MIME header and image bytes, and removes the uploaded file if attachment registration fails. Submit requires an explicit `{{prompt}}` template marker. Multipart upload remains an HTTP 501 stub. `/comfy` is block keyword discovery only; no direct argument-parsing slash command exists.
 

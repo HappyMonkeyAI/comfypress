@@ -27,12 +27,12 @@ ComfyPress proxies authenticated Gutenberg requests to an administrator-configur
 
 - Ship text-to-image through the existing Gutenberg block, authenticated REST proxy, Media Library import, and image insertion.
 - Keep direct `/comfy <prompt>` execution, per-block seed/steps/CFG controls, site-wide quotas/usage logs, and image-to-image upload out of scope. `/upload-image` remains HTTP 501.
-- Keep `comfy-image/examples/flux1-krea-dev.api.json` as a repository-only starter fixture. Do not add it to the release ZIP without separate approval.
+- Keep `comfy-image/examples/flux2-klein-4b.api.json` as a repository-only smoke-tested example. Do not add it to the release ZIP without separate approval.
 
 ## Consequences
 
 - Self-hosted/private ComfyUI remains usable, but the site administrator remains a high-trust network boundary; installations that cannot accept this risk need their own egress restrictions.
-- Concurrent quota updates are serialized on supported MySQL/MariaDB deployments. Lock contention is fail-closed and can transiently return the existing quota error response. A live WordPress/database concurrency test is still required before release acceptance.
+- Concurrent quota updates are serialized on supported MySQL/MariaDB deployments. Lock contention is fail-closed and can transiently return the existing quota error response. A live disposable WordPress/MySQL test on 2026-09-29 accepted 10 of 24 concurrent submissions, denied 14, verified the counter, and cleaned up its test state; see `PROGRESS.md`.
 - The repository example is validated against the plugin's API-format/placeholder contract, not against an actual ComfyUI model installation.
 - The release ZIP remains limited to its existing four runtime/readme files until separate approval changes the package allowlist.
 
@@ -40,4 +40,4 @@ ComfyPress proxies authenticated Gutenberg requests to an administrator-configur
 
 - The local PHP contract harness verifies that quota updates acquire/release the advisory lock and fail closed on contention, plus that request payloads cannot override the configured ComfyUI URL.
 - The repository-only fixture parses as a ComfyUI API prompt object and has `{{prompt}}` in its intended text input.
-- These checks do not replace a live WordPress REST/auth/browser/media test or a multi-worker MySQL/MariaDB concurrency test; both remain open gates.
+- Follow-on live acceptance is recorded in `PROGRESS.md`: WordPress 5.9.3/PHP 8.0.19 exercised REST cookie+nonce role/capability boundaries, media-failure cleanup, configured-destination binding, and redirect handling; separate WordPress 6.9.4 evidence covers the Gutenberg generate/import and prompt-restoration path. The 2026-09-29 quota run closes the documented multi-worker gate for the tested MySQL/MariaDB setup. Security probes used a local mock, not a real ComfyUI generation. Strict egress allowlisting, a broader private-LAN configuration matrix, and non-MySQL/MariaDB database compatibility remain unverified or deferred; do not imply those are covered.

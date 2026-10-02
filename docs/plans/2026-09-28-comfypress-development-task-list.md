@@ -1,6 +1,6 @@
 # ComfyPress Development Task List
 
-> Execution ledger, reconciled against source, tests, and runtime checks on 2026-09-28. Live WordPress REST authentication/role gates are verified; Gutenberg/media and release acceptance remain open.
+> Execution ledger, initially reconciled on 2026-09-28. Current release evidence is appended below and in `PROGRESS.md`; the Gutenberg/media happy path, quota concurrency, and declared support-floor point are verified. Distribution-channel selection and publication remain open.
 
 **Goal:** Develop the Comfy Image WordPress plugin into a secure, testable Gutenberg-to-ComfyUI workflow while keeping project docs aligned with working behavior.
 
@@ -13,16 +13,16 @@
 ## Evidence and current constraints
 
 - `PROGRESS.md` began with the Agents Protocol documentation bootstrap; later entries now record product implementation and exact verification evidence.
-- Current deterministic evidence: the latest `php -n tests/php/run.php` run passes 75 contract checks and `node tests/js/run.js` passes 18. These harnesses stub WordPress APIs and ComfyUI HTTP; they do not exercise live database advisory-lock concurrency, real Media Library writes, or a live editor. A separate HTTP probe on WordPress 6.9.4 verified REST cookie-auth nonce and role gates on `GET /check-status/{prompt_id}` only.
+- Current deterministic evidence: `php -n tests/php/run.php` passes 93 contract checks and `node tests/js/run.js` passes 38. These harnesses stub WordPress APIs and ComfyUI HTTP; they do not replace live database, Media Library, or editor evidence. The unreleased per-block seed/steps/CFG override path has PHP/JS contract coverage; live Gutenberg/generation acceptance is still pending. A separate HTTP probe on WordPress 6.9.4 verified REST cookie-auth nonce and role gates on `GET /check-status/{prompt_id}` only.
 - `PLAN.md`, `README.md`, `project.json`, `comfy-image/readme.txt`, `CONTEXT.md`, the new ADR, and canonical `.agent/memories/` describe the admin-trusted outbound boundary, advisory-lock quota, first-release scope, fixture provenance, test limitations, and open live acceptance gate. The legacy mock workflow remains non-API format and excluded from the package.
-- The API-format starter at `comfy-image/examples/flux1-krea-dev.api.json` is repository-only, parses as a ComfyUI API prompt object, and contains `{{prompt}}` in the intended text node. The supplied editor-format workflows were not modified. It is not included in the ZIP without separate approval.
-- The release builder remains an explicit four-file allowlist; final build/archive/source checks are recorded in the latest `PROGRESS.md` entry.
+- The maintained API-format example at `comfy-image/examples/flux2-klein-4b.api.json` is repository-only, parses as a ComfyUI API prompt object, and contains `{{prompt}}` in the positive-prompt path. It was smoke-tested directly against installed ComfyUI models; this does not establish WordPress-editor acceptance or authorize ZIP inclusion.
+- The release builder remains an explicit four-file allowlist; the latest package build/archive/source checks and minimum-runtime install evidence are recorded in `PROGRESS.md`.
 - `20251120-plan.md` describes an earlier scaffold-only state and conflicts with current implementation; treat it as historical context, not the active plan. It is untracked and must be preserved unless the user authorizes curation.
 - The submit/status contract is stable: submit returns the ComfyUI JSON prompt response; the editor accepts `prompt_id`/documented aliases, polls history, and extracts filename/subfolder/type. Error responses are bounded and do not return raw upstream bodies/headers.
 - REST routes require `edit_posts` and an enabled role (`editor`/`author` by default); `manage_options` bypasses the role list but not `edit_posts`. Media import additionally requires `upload_files`. Live HTTP results: anonymous and editor-without-nonce requests returned 401; invalid nonce returned 403 `rest_cookie_invalid_nonce`; valid editor returned 200; valid subscriber returned 403 `rest_forbidden`.
 - The ComfyUI base URL accepts HTTP(S), optional reverse-proxy path prefixes, and local/private hosts; it rejects embedded credentials/query/fragment, disables redirects, and workflow payloads cannot override the configured destination. The first release explicitly trusts administrators to configure a safe target; this is not an egress allowlist and internal-network SSRF remains possible after admin compromise/misconfiguration.
-- Generation uses a fixed per-user 10-per-60-second transient window anchored by the first request; later successful requests do not extend it. A MySQL/MariaDB named advisory lock protects the read/increment/write; contention/storage errors fail closed. Contract tests cover window reset/remaining TTL and lock acquisition/release/contention, but actual multi-worker database behavior is not verified. No site-wide quota is in first-release scope.
-- Image import bounds bytes/time, validates supported image MIME against binary data, rejects unsafe filename/subfolder inputs, and deletes the uploaded file when attachment registration fails. Live WordPress media behavior is unverified.
+- Generation uses a fixed per-user 10-per-60-second transient window anchored by the first request; later successful requests do not extend it. A MySQL/MariaDB named advisory lock protects the read/increment/write; contention/storage errors fail closed. Contract tests cover window reset/remaining TTL and lock acquisition/release/contention; a disposable live WordPress run accepted 10 of 24 simultaneous requests and denied 14, then verified the counter and cleaned synthetic data. No site-wide quota is in first-release scope.
+- Image import bounds bytes/time, validates supported image MIME against binary data, rejects unsafe filename/subfolder inputs, and deletes the uploaded file when attachment registration fails. The Gutenberg happy path verified a live image import; negative media-capability and import-failure paths remain unverified live.
 - The user explicitly authorized the existing `invoices-wordpress-1` WP Invoice Test container. The plugin was temporarily staged/activated with temporary settings, test accounts, and a draft post to exercise real REST HTTP cookie-auth middleware. Cleanup completed; read-only verification confirmed the plugin inactive, plugin directory absent, all five plugin settings absent, and no matching temporary user/draft records. The valid editor status request returned 200. No Gutenberg UI, generation, Media Library import, or controlled-failure path was run. Direct ComfyUI workflow tests remain separate from editor acceptance.
 - PHP startup emits local `pdo_sqlite` load and duplicate `sqlite3` warnings; syntax/test commands still exit successfully. No npm/composer build pipeline is needed for the classic editor script.
 
@@ -60,15 +60,15 @@
 
 **Inspect/change:** REST permission callbacks and nonce behavior in `comfy-image/includes/endpoints.php`, nonce setup in `comfy-image/comfy-image.php`, and the ComfyUI URL setting/sanitization.
 
-**Acceptance/evidence:** Stub tests cover capability/role selection, media-import capability, rejected query/fragment URLs, and inability of request payloads to override the configured destination. Live WordPress 6.9.4 HTTP checks on `GET /check-status/{prompt_id}` observed anonymous/missing nonce = 401, invalid nonce = 403 `rest_cookie_invalid_nonce`, valid editor = 200, and disallowed subscriber = 403 `rest_forbidden`. The submit route, administrator bypass, and `upload_files` gate were not tested live. The trusted-administrator policy still has no strict egress allowlist; see ADR-0002 for the SSRF tradeoff. Outbound-boundary behavior and live multi-worker DB concurrency are separate open checks.
+**Acceptance/evidence:** Stub tests cover capability/role selection, media-import capability, rejected query/fragment URLs, and inability of request payloads to override the configured destination. Live WordPress 6.9.4 HTTP checks on `GET /check-status/{prompt_id}` observed anonymous/missing nonce = 401, invalid nonce = 403 `rest_cookie_invalid_nonce`, valid editor = 200, and disallowed subscriber = 403 `rest_forbidden`. The submit route, administrator bypass, and `upload_files` gate were not tested live. The trusted-administrator policy still has no strict egress allowlist; see ADR-0002 for the SSRF tradeoff. Live quota concurrency was later verified; outbound-boundary behavior remains a separate open check.
 
-### Task 5: Bound generation cost and image-import resource use — SOURCE LOCK IMPLEMENTED; LIVE DB CHECK BLOCKED
+### Task 5: Bound generation cost and image-import resource use — SOURCE AND LIVE QUOTA CONCURRENCY VERIFIED; NEGATIVE MEDIA PATHS OPEN
 
 **Outcome:** Prevent accidental or repeated expensive runs and bound bytes/time spent importing images.
 
 **Inspect/change:** `comfy-image/includes/endpoints.php` generation and import paths; relevant settings in `comfy-image/comfy-image.php`.
 
-**Acceptance/evidence:** A per-user fixed 10-per-60-second transient quota is serialized by a database named lock scoped to database/table prefix/site/user; a busy lock fails closed, and the lock is released on quota exhaustion. The updated PHP harness passed 75 checks covering the fixed window and the existing lock boundary plus quota exhaustion/no upstream request, response-size bounds, MIME/binary validation, filenames/subfolders, redirects, upstream errors, attachment creation, and cleanup. Actual MySQL/MariaDB multi-worker concurrency and WordPress HTTP/media failures remain unverified.
+**Acceptance/evidence:** A per-user fixed 10-per-60-second transient quota is serialized by a database named lock scoped to database/table prefix/site/user; a busy lock fails closed, and the lock is released on quota exhaustion. The PHP harness passed 75 checks covering the fixed window and lock boundary plus quota exhaustion/no upstream request, response-size bounds, MIME/binary validation, filenames/subfolders, redirects, upstream errors, attachment creation, and cleanup. A disposable live WordPress concurrency run accepted 10 of 24 simultaneous requests and denied 14; counter readback and cleanup passed. Negative WordPress HTTP/media paths remain open.
 
 ## Priority 2 — Complete the planned editor workflows
 
@@ -86,31 +86,37 @@
 
 **Inspect/change:** `comfy-image/assets/block.js`, editor registration in `comfy-image/comfy-image.php`, and WordPress minimum-version compatibility in `project.json`/`comfy-image/readme.txt`.
 
-**Acceptance/evidence:** `/comfy` keyword discovery inserts the generator block in the native inserter; the prompt is entered in the block. Direct `/comfy <prompt>` parsing/command handoff is explicitly not implemented. Deterministic keyword/flow tests pass; live editor visibility, keyboard interaction, permission behavior, and insertion remain unverified. Do not silently claim a direct command.
+**Acceptance/evidence:** `/comfy` keyword discovery inserts the generator block in the native inserter; the prompt is entered in the block. Direct `/comfy <prompt>` parsing/command handoff is explicitly not implemented. Deterministic tests and the live Gutenberg visibility/generation/import/insertion path pass. Live negative submit/media permissions remain unverified. Do not silently claim a direct command.
 
 ## Priority 3 — Release readiness
 
-### Task 8: Improve generation controls and failure UX — IMPLEMENTED (BASIC), LIVE ACCEPTANCE OPEN
+### Task 8: Improve generation controls and failure UX — BASIC PATHS VERIFIED; NUMERIC OVERRIDES IMPLEMENTED UNRELEASED, LIVE GATE PENDING
 
 **Outcome:** Make the basic block usable for real workflows without expanding the server contract unsafely.
 
 **Inspect/change:** `comfy-image/assets/block.js`, settings/localization, and `project.json`.
 
-**Acceptance/evidence:** Source implements progress/error messages, bounded polling timeout, retry, duplicate-submit guard, local polling cancellation, configurable media save/view behavior, and image insertion; JS contract tests exercise submit/poll/import-or-view/insert, duplicates, and cancellation control. Local cancellation does not stop the ComfyUI job. Live WordPress browser/editor verification remains open; seed/steps controls are not included because the current workflow contract is opaque.
+**Acceptance/evidence:** Source implements progress/error messages, bounded polling timeout, retry, duplicate-submit guard, local polling cancellation, configurable media save/view behavior, and image insertion; JS contract tests exercise submit/poll/import-or-view/insert, duplicates, and cancellation control. The live basic Gutenberg happy path, saved-prompt reload, and mocked failure/retry path are verified; local cancellation does not stop the ComfyUI job. Optional seed/steps/CFG fields now persist per block and are validated/replaced only through explicit workflow markers; PHP/JS contract coverage passes (93/38). Live Gutenberg and generation acceptance for the new fields is still pending.
 
-### Task 9: Package and document a release candidate — FOUR-FILE PACKAGE VERIFIED; SUPPORT/LIVE GATES BLOCKED
+### Task 9: Package and document a release candidate — FINAL PACKAGE AND SUPPORT-FLOOR VERIFIED; CHANNEL UNDECIDED
 
 **Outcome:** Produce a reproducible plugin package and support matrix after security and functional gates pass.
 
 **Inspect/change:** `comfy-image/readme.txt`, `README.md`, plugin headers/version, ignore/package rules, and a minimal CI/test entry point if justified.
 
-**Acceptance/evidence:** `scripts/build-plugin.sh` previously normalized staged file timestamps and refused to overwrite output; that archive predates the latest fixed-window endpoint change, so a fresh reproducible build and source equality check are pending. WordPress 5.9/PHP 8.0 are documented, but minimum-version compatibility is not validated across a support matrix. A temporary plugin activation and authenticated `check-status` REST probe were run on WordPress 6.9.4, then all test artifacts were removed; submit/generation/import and browser acceptance were not run. Do not claim release readiness.
+**Acceptance/evidence:** `scripts/build-plugin.sh` normalizes staged file timestamps and refuses to overwrite output. The final refreshed archive was built twice byte-identically, passed integrity and exact four-file/source-byte checks, then the exact archive installed/activated on WordPress 5.9.3/PHP 8.0.19 with all four routes and mocked submit failure/recovery verified. Current PHP (75) and JavaScript (22) suites, syntax/metadata checks, and `git diff --check` passed. The separate WordPress 6.9.4/PHP 8.3.30 install, live quota concurrency, and Gutenberg/media happy path are also verified. WordPress.org versus hosted distribution is undecided; do not submit, publish, or claim channel readiness.
+
+## Release-gate update — 2026-09-29
+- Disposable live quota test: 24 concurrent requests yielded 10 accepted and 14 denied; counter readback and synthetic test-data cleanup passed.
+- WordPress 5.9.3/PHP 8.0.19 installed/activated plugin 0.1.2 and registered all four routes on an isolated internal Docker network. The submit callback returned sanitized 502 on a mocked upstream error, then HTTP 200 on retry; `pre_http_request` intercepted both calls. No external generation occurred.
+- Browser-level mocked failure/retry, WordPress 6.9.4 Gutenberg/media happy path, and support-floor install are separately evidenced in `PROGRESS.md`. The PHP callback check is not an external REST-server/browser end-to-end test.
+- The final refreshed archive is recorded in `PROGRESS.md`; reproducibility, integrity, allowlist/source equality, minimum-runtime install/recovery, and deterministic checks passed. No publication or repository change was authorized.
 
 ## Follow-on queue execution — 2026-09-28
 
-### Workflow fixture — COMPLETE (static contract only)
-- Added `comfy-image/examples/flux1-krea-dev.api.json` from the existing API-format export, changing only the intended text input to `{{prompt}}`; the original export and supplied editor-format JSON files remain unchanged.
-- The PHP harness validates API-node shape and the placeholder contract; JSON parsing and both contract suites pass. No generation of this exact fixture was run, so model/node availability and successful image output are not claimed.
+### Workflow fixture — SUPERSEDED BY THE CURRENT FLUX2 EXAMPLE
+- The initial repository-only API-format starter was retired during example-fixture cleanup; the maintained fixture is `comfy-image/examples/flux2-klein-4b.api.json`.
+- The current fixture was smoke-tested directly against installed ComfyUI models and is covered by the PHP placeholder/positive-prompt-path contract. Direct ComfyUI success does not establish WordPress-editor acceptance or authorize ZIP inclusion.
 
 ### WordPress target, REST auth, and Gutenberg vertical slice — STATUS-ROUTE AUTH VERIFIED; EDITOR/MEDIA FLOW OPEN
 - On the user-authorized `invoices-wordpress-1` WP Invoice Test target (WordPress 6.9.4), the plugin was staged temporarily and the real REST HTTP cookie-auth path was exercised with generated test identities/nonces. Anonymous and missing-nonce requests returned 401; invalid nonce returned 403 `rest_cookie_invalid_nonce`; allowed editor returned 200; disallowed subscriber returned 403 `rest_forbidden`.
@@ -118,7 +124,7 @@
 
 ### Network policy and first-release boundary — DECIDED; STATIC TESTED
 - Accepted the trusted-administrator outbound policy described in ADR-0002. Private/LAN endpoints remain supported; credentials/query/fragment and redirects are rejected; request payloads cannot override the configured URL. This is not a strict egress allowlist.
-- First release remains text-to-image through the existing block and media insertion. Direct inline command, seed/steps/CFG controls, site-wide quota/usage logging, and image-to-image upload are deferred; upload remains HTTP 501.
+- First release remains text-to-image through the existing block and media insertion. Per-block seed/steps/CFG overrides are now implemented and contract-tested in the unreleased worktree, but live Gutenberg/generation acceptance is pending and the existing 0.1.2 package is unchanged. Direct inline command, site-wide quota/usage logging, and image-to-image upload remain deferred; upload remains HTTP 501.
 
 ### Package/support matrix — PACKAGE VERIFIED; SUPPORT MATRIX BLOCKED
 - The approved four-file ZIP allowlist was preserved; the repository-only example was intentionally not bundled without separate approval. Two earlier builds compared byte-for-byte, archive integrity passed, and all four files matched the then-current source. The quota endpoint changed afterward, so repeat build/integrity/source checks before release.

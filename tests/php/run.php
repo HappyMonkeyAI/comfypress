@@ -22,6 +22,7 @@ $GLOBALS['comfy_test_transient_ttls'] = array();
 $GLOBALS['comfy_test_can_upload'] = true;
 $GLOBALS['comfy_test_attachment_error'] = false;
 $GLOBALS['comfy_test_deleted_files'] = array();
+$GLOBALS['comfy_test_settings_errors'] = array();
 
 class WP_REST_Request {
     private $json;
@@ -98,6 +99,8 @@ function get_current_user_id() { return $GLOBALS['comfy_test_user_id']; }
 function get_transient($key) { return $GLOBALS['comfy_test_transients'][$key] ?? false; }
 function set_transient($key, $value, $expiration) { $GLOBALS['comfy_test_transients'][$key] = $value; $GLOBALS['comfy_test_transient_ttls'][$key] = $expiration; return true; }
 function get_option($key, $default = false) { return $GLOBALS['comfy_test_options'][$key] ?? $default; }
+function __($text, $domain = null) { return $text; }
+function add_settings_error($setting, $code, $message) { $GLOBALS['comfy_test_settings_errors'][] = array($setting, $code, $message); }
 function esc_url_raw($url, $protocols = array('http', 'https')) {
     $scheme = strtolower((string) parse_url((string) $url, PHP_URL_SCHEME));
     return in_array($scheme, $protocols, true) ? $url : '';
@@ -181,6 +184,21 @@ check(! $submit_permission(), 'users without edit_posts are denied regardless of
 $GLOBALS['comfy_test_can_edit'] = true;
 $GLOBALS['comfy_test_roles'] = array('editor');
 
+$generated_gateway_token = 'cpwg_' . str_repeat('x', 43);
+$GLOBALS['comfy_test_options']['comfy_image_gateway_api_token'] = '';
+check(! isset(comfy_image_get_gateway_auth_headers()['Authorization']), 'gateway auth header is omitted when no key is configured');
+$GLOBALS['comfy_test_options']['comfy_image_gateway_api_token'] = 'old-token';
+check(comfy_image_sanitize_gateway_api_token('') === 'old-token', 'blank gateway token input preserves the saved token');
+check(comfy_image_sanitize_gateway_api_token("bad\r\nInjected: yes") === 'old-token', 'invalid gateway token input preserves the saved token');
+check(count($GLOBALS['comfy_test_settings_errors']) === 1, 'invalid gateway token input adds a settings error');
+$_POST['comfy_image_clear_gateway_api_token'] = '1';
+check(comfy_image_sanitize_gateway_api_token('') === '', 'explicit clear checkbox removes the saved gateway token');
+unset($_POST['comfy_image_clear_gateway_api_token']);
+check(comfy_image_sanitize_gateway_api_token($generated_gateway_token) === $generated_gateway_token, 'gateway token sanitizer accepts generated token format');
+$GLOBALS['comfy_test_options']['comfy_image_gateway_api_token'] = $generated_gateway_token;
+$gateway_headers = comfy_image_get_gateway_auth_headers(array('Content-Type' => 'application/json'));
+check(($gateway_headers['Authorization'] ?? null) === 'Bearer ' . $generated_gateway_token && $gateway_headers['Content-Type'] === 'application/json', 'gateway auth helper adds a bearer header without replacing existing headers');
+
 $GLOBALS['comfy_test_remote_response'] = array(
     'response' => array('code' => 200),
     'body' => '{"prompt_id":"prompt-123"}',
@@ -202,6 +220,7 @@ check(($sent['prompt']['4']['inputs']['text'] ?? null) === 'blue cabin', 'submit
 check(($sent['prompt']['4']['inputs']['negative'] ?? null) === 'keep this text', 'submit preserves unrelated workflow text');
 check(($sent['prompt']['4']['inputs']['seed'] ?? null) === 123 && ($sent['prompt']['4']['inputs']['steps'] ?? null) === 12 && ($sent['prompt']['4']['inputs']['cfg'] ?? null) === 5.5, 'unset overrides preserve administrator workflow numeric defaults');
 check(($GLOBALS['comfy_test_remote_args']['args']['redirection'] ?? null) === 0, 'submit does not follow upstream redirects');
+check(($GLOBALS['comfy_test_remote_args']['args']['headers']['Authorization'] ?? null) === 'Bearer ' . $generated_gateway_token, 'workflow submission sends gateway bearer authentication server-side');
 check(isset($GLOBALS['comfy_test_remote_args']['url']) && $GLOBALS['comfy_test_remote_args']['url'] === 'http://127.0.0.1:8188/prompt', 'workflow requests use the configured administrator endpoint, not a request-supplied URL');
 
 $override_workflow = array(
@@ -370,6 +389,7 @@ check($bad_prompt_id_response->get_status() === 400, 'history endpoint rejects n
 check($GLOBALS['comfy_test_remote_calls'] === $calls_before_bad_prompt_id, 'invalid prompt IDs are rejected before network access');
 $response = comfy_image_check_status($status_request);
 check($response->get_status() === 200, 'successful history response preserves HTTP 200');
+check(($GLOBALS['comfy_test_remote_args']['args']['headers']['Authorization'] ?? null) === 'Bearer ' . $generated_gateway_token, 'history polling sends gateway bearer authentication');
 check(isset($response->get_data()['prompt-123']['outputs']['9']['images'][0]['filename']), 'history endpoint preserves the ComfyUI history response shape');
 
 $GLOBALS['comfy_test_remote_get_response'] = array(
@@ -397,6 +417,7 @@ $response = comfy_image_fetch_image($image_request);
 check($response->get_status() === 200 && ($response->get_data()['attachment_id'] ?? null) === 42, 'image import returns a WordPress attachment');
 check(($GLOBALS['comfy_test_remote_args']['args']['redirection'] ?? null) === 0, 'image import does not follow upstream redirects');
 check(($GLOBALS['comfy_test_remote_args']['args']['limit_response_size'] ?? null) === 10485761, 'image import bounds the downloaded response size');
+check(($GLOBALS['comfy_test_remote_args']['args']['headers']['Authorization'] ?? null) === 'Bearer ' . $generated_gateway_token, 'image retrieval sends gateway bearer authentication');
 check(str_contains($GLOBALS['comfy_test_remote_args']['url'], 'subfolder=previews%2Fdemo'), 'image import preserves subfolder in the ComfyUI view request');
 
 $GLOBALS['comfy_test_attachment_error'] = true;
@@ -437,6 +458,9 @@ foreach (array('/submit-workflow', '/check-status/(?P<prompt_id>[A-Za-z0-9_-]{1,
     $permission = $GLOBALS['comfy_test_routes'][$route]['permission_callback'] ?? null;
     check(is_callable($permission) && $permission() === false, $route . ' denies users without edit_posts capability');
 }
+
+define('COMFY_IMAGE_GATEWAY_API_TOKEN', 'cpwg_configured_constant_token_1234567890');
+check(comfy_image_get_gateway_api_token() === 'cpwg_configured_constant_token_1234567890', 'wp-config constant takes precedence over the saved gateway token');
 
 if ($failures) {
     fwrite(STDERR, sprintf("%d/%d checks failed\n", count($failures), $checks));

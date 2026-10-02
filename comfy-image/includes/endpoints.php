@@ -11,6 +11,54 @@ function comfy_image_get_base_url() {
     return comfy_image_validate_base_url(get_option('comfy_image_comfy_base_url', ''));
 }
 
+function comfy_image_get_gateway_api_token() {
+    $token = defined('COMFY_IMAGE_GATEWAY_API_TOKEN')
+        ? constant('COMFY_IMAGE_GATEWAY_API_TOKEN')
+        : get_option('comfy_image_gateway_api_token', '');
+
+    return is_string($token) ? trim($token) : '';
+}
+
+function comfy_image_get_gateway_auth_headers($headers = array()) {
+    if (! is_array($headers)) {
+        $headers = array();
+    }
+
+    $token = comfy_image_get_gateway_api_token();
+    if ($token !== '') {
+        $headers['Authorization'] = 'Bearer ' . $token;
+    }
+
+    return $headers;
+}
+
+function comfy_image_sanitize_gateway_api_token($value) {
+    $existing = get_option('comfy_image_gateway_api_token', '');
+    if (defined('COMFY_IMAGE_GATEWAY_API_TOKEN')) {
+        return is_string($existing) ? $existing : '';
+    }
+
+    if (isset($_POST['comfy_image_clear_gateway_api_token']) && (string) $_POST['comfy_image_clear_gateway_api_token'] === '1') {
+        return '';
+    }
+
+    if (! is_string($value)) {
+        return is_string($existing) ? $existing : '';
+    }
+
+    $value = trim($value);
+    if ($value === '') {
+        return is_string($existing) ? $existing : '';
+    }
+
+    if (! preg_match('/\\Acpwg_[A-Za-z0-9_-]{20,160}\\z/', $value)) {
+        add_settings_error('comfy_image_gateway_api_token', 'invalid_gateway_token', __('Enter a valid ComfyPress Gateway token or leave the field blank to keep the saved token.', 'comfy-image'));
+        return is_string($existing) ? $existing : '';
+    }
+
+    return $value;
+}
+
 /**
  * Accept HTTP(S) ComfyUI origins, including private/LAN hosts, without embedded credentials.
  */
@@ -422,7 +470,7 @@ function comfy_image_submit_workflow( WP_REST_Request $request ) {
     $endpoint = untrailingslashit($base) . '/prompt';
 
     $response = wp_remote_post($endpoint, array(
-        'headers' => array('Content-Type' => 'application/json'),
+        'headers' => comfy_image_get_gateway_auth_headers(array('Content-Type' => 'application/json')),
         'body' => $body,
         'timeout' => 30,
         'redirection' => 0,
@@ -470,7 +518,11 @@ function comfy_image_check_status( WP_REST_Request $request ) {
     }
 
     $endpoint = untrailingslashit($base) . '/history/' . rawurlencode($prompt_id);
-    $response = wp_remote_get($endpoint, array('timeout' => 20, 'redirection' => 0));
+    $response = wp_remote_get($endpoint, array(
+        'headers' => comfy_image_get_gateway_auth_headers(),
+        'timeout' => 20,
+        'redirection' => 0,
+    ));
 
     if (is_wp_error($response)) {
         return new WP_REST_Response(array('error' => 'Unable to contact ComfyUI'), 502);
@@ -548,6 +600,7 @@ function comfy_image_fetch_image( WP_REST_Request $request ) {
     $max_mb = min(100, max(1, $max_mb));
     $max_bytes = $max_mb * 1024 * 1024;
     $resp = wp_remote_get($view_url, array(
+        'headers' => comfy_image_get_gateway_auth_headers(),
         'timeout' => 40,
         'redirection' => 0,
         'limit_response_size' => $max_bytes + 1,

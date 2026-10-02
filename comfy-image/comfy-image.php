@@ -1,12 +1,11 @@
 <?php
 /**
- * Plugin Name: ComfyPress
- * Description: Generate images inside Gutenberg using a configured ComfyUI server.
+ * Plugin Name: Comfy Image — ComfyUI Integration
+ * Description: Generate images inside Gutenberg using a remote ComfyUI instance.
  * Version:     0.1.3
  * Author:      HappyMonkey AI
  * Author URI:  https://happymonkey.ai/
- * License:     MIT
- * License URI: https://opensource.org/license/mit/
+ * License:     GPL-2.0+
  * Text Domain: comfy-image
  */
 
@@ -53,6 +52,7 @@ function comfy_image_admin_menu() {
 add_action('admin_init', 'comfy_image_settings_init');
 function comfy_image_settings_init() {
     register_setting('comfy_image_settings', 'comfy_image_comfy_base_url', array('sanitize_callback' => 'comfy_image_validate_base_url'));
+    register_setting('comfy_image_settings', 'comfy_image_gateway_api_token', array('sanitize_callback' => 'comfy_image_sanitize_gateway_api_token'));
     register_setting('comfy_image_settings', 'comfy_image_default_workflow_template', array('sanitize_callback' => 'comfy_image_sanitize_workflow_template'));
     register_setting('comfy_image_settings', 'comfy_image_auto_save_to_media', array('sanitize_callback' => 'absint'));
     register_setting('comfy_image_settings', 'comfy_image_max_image_size_mb', array('sanitize_callback' => 'absint'));
@@ -63,6 +63,7 @@ function comfy_image_settings_init() {
     }, 'comfy_image_settings');
 
     add_settings_field('comfy_base_url', __('ComfyUI Base URL', 'comfy-image'), 'comfy_image_base_url_field', 'comfy_image_settings', 'comfy_image_main');
+    add_settings_field('gateway_api_token', __('Gateway API token', 'comfy-image'), 'comfy_image_gateway_api_token_field', 'comfy_image_settings', 'comfy_image_main');
     add_settings_field('default_workflow_template', __('Default workflow template', 'comfy-image'), 'comfy_image_default_workflow_field', 'comfy_image_settings', 'comfy_image_main');
     add_settings_field('auto_save_to_media', __('Auto save to WP Media', 'comfy-image'), 'comfy_image_auto_save_field', 'comfy_image_settings', 'comfy_image_main');
     add_settings_field('max_image_size_mb', __('Max image size (MB)', 'comfy-image'), 'comfy_image_max_size_field', 'comfy_image_settings', 'comfy_image_main');
@@ -91,6 +92,18 @@ function comfy_image_sanitize_workflow_template($value) {
 function comfy_image_base_url_field() {
     $v = esc_attr(get_option('comfy_image_comfy_base_url', ''));
     echo "<input type='text' name='comfy_image_comfy_base_url' value='" . $v . "' size='60' />";
+}
+
+function comfy_image_gateway_api_token_field() {
+    if (defined('COMFY_IMAGE_GATEWAY_API_TOKEN')) {
+        echo '<p class="description">' . esc_html__('A token is configured in wp-config.php and takes precedence over this setting.', 'comfy-image') . '</p>';
+        return;
+    }
+
+    $configured = comfy_image_get_gateway_api_token() !== '';
+    echo "<input type='password' name='comfy_image_gateway_api_token' value='' autocomplete='new-password' spellcheck='false' class='regular-text' />";
+    echo '<p class="description">' . esc_html($configured ? __('A token is saved. Leave blank to keep it, or enter a replacement token.', 'comfy-image') : __('Paste the ComfyPress Gateway token. It is sent only from the WordPress server.', 'comfy-image')) . '</p>';
+    echo '<label><input type="checkbox" name="comfy_image_clear_gateway_api_token" value="1" /> ' . esc_html__('Remove the saved token', 'comfy-image') . '</label>';
 }
 
 function comfy_image_default_workflow_field() {
